@@ -179,7 +179,7 @@ int main(int argc, char* argv[])
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%02i%02i%02i.%03lli.%03lli.%03lli", OutFileName, c.hour, c.min, c.sec, msec, usec, nsec); 
+			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i.%03lli.%03lli.%03lli.pcap", OutFileName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec); 
 			OutFile 		= fopen(FileName, "wb");
 			if (!OutFile)
 			{
@@ -190,9 +190,14 @@ int main(int argc, char* argv[])
 
 			SplitByte = 0;
 
+
+			u8 TimeStr[1024];
+			c	= ns2clock(LastTS);
+			sprintf(TimeStr, "%04i-%02i-%02i %02i:%02i:%02i", c.year, c.month, c.day, c.hour, c.min, c.sec);
+
 			double dT = (clock_ns() - StartTS) / 1e9;
 			double Bps = (TotalByte * 8.0) / dT; 
-			printf("[%.3f H] %s : Total Bytes %.3f GB Speed: %.3fGbps : New Split\n", dT / (60*60), FileName, TotalByte / 1e9, Bps / 1e9);
+			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3fGbps : New Split\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Bps / 1e9);
 		}
 
 		// write output
@@ -209,9 +214,13 @@ int main(int argc, char* argv[])
 
 		if ((TotalPkt % (u64)1e6) == 0)
 		{
+			u8 TimeStr[1024];
+			clock_date_t c	= ns2clock(LastTS);
+			sprintf(TimeStr, "%04i-%02i-%02i %02i:%02i:%02i", c.year, c.month, c.day, c.hour, c.min, c.sec);
+
 			double dT = (clock_ns() - StartTS) / 1e9;
 			double Bps = (TotalByte * 8.0) / dT; 
-			printf("[%.3f H] %s : Total Bytes %.3f GB Speed: %.3fGbps\n", dT / (60*60), FileName, TotalByte / 1e9, Bps / 1e9);
+			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3fGbps\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Bps / 1e9);
 		}
 
 	}
