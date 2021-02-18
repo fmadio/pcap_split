@@ -24,6 +24,18 @@
 
 #include "fTypes.h"
 
+//---------------------------------------------------------------------------------------------
+
+#define SPLIT_MODE_BYTE			1
+#define SPLIT_MODE_TIME			2
+
+#define FILENAME_EPOCH_SEC		1
+#define FILENAME_EPOCH_MSEC		2
+#define FILENAME_EPOCH_USEC		3
+#define FILENAME_EPOCH_NSEC		4
+#define FILENAME_TSTR			5
+
+//---------------------------------------------------------------------------------------------
 // pcap headers
 
 #define PCAPHEADER_MAGIC_NANO		0xa1b23c4d
@@ -64,19 +76,80 @@ double TSC2Nano = 0;
 
 static void Help(void)
 {
+	printf("\n");
+	printf("fmadio 10G/40G/100G Packet Capture Systems (https://fmad.io)\n");
+	printf("(%s)\n", __TIMESTAMP__);
+	printf("\n");
 	printf("pcap_split -o <output base> -s <split type> \n");
 	printf("\n");
 	printf("NOTE: Input PCAP`s are always read from STDIN\n");
 	printf("\n");
-	printf("-v                         : verbose output\n");
-	printf("--split-byte  <byte count> : split by bytes\n");
+	printf("-v                          : verbose output\n");
+	printf("--split-byte  <byte count>  : split by bytes\n");
+	printf("--split-time  <nanoseconds> : split by time\n");
+	printf("\n");
+	printf("--filename-epoch-sec          : output epoch sec  filename\n");
+	printf("--filename-epoch-msec         : output epoch msec filename\n");
+	printf("--filename-epoch-usec         : output epoch usec filename\n");
+	printf("--filename-epoch-nsec         : output epoch nsec filename\n");
+	printf("--filename-timestr            : output time string filename\n");
 	printf("\n");
 	printf("example: split every 100GB\n");
 	printf("$ cat my_big_capture.pcap | pcap_split -o my_big_capture_ --split-byte 100e9\n");
 	printf("\n");
+
+	printf("example: split every 1min\n");
+	printf("$ cat my_big_capture.pcap | pcap_split -o my_big_capture_ --split-time 60e9\n");
+	printf("\n");
 	printf("example: split compress pcap every 100GB\n");
 	printf("$ gzip -d -c my_big_capture.pcap.gz | pcap_split -o my_big_capture_ --split-byte 100e9\n");
 	printf("\n");
+}
+
+//-------------------------------------------------------------------------------------------------
+// various different naming formats 
+static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS)
+{
+
+	switch (Mode)
+	{
+	case FILENAME_EPOCH_SEC:
+		sprintf(FileName, "%s_%lli.pcap", BaseName, (u64)(TS / 1e9)); 
+		break;
+
+	case FILENAME_EPOCH_MSEC:
+		sprintf(FileName, "%s_%lli.pcap", BaseName, (u64)(TS/1e6));
+		break;
+
+	case FILENAME_EPOCH_USEC:
+		sprintf(FileName, "%s_%lli.pcap", BaseName, (u64)(TS/1e3));
+		break;
+
+	case FILENAME_EPOCH_NSEC:
+		sprintf(FileName, "%s_%lli.pcap", BaseName, TS);
+		break;
+
+	case FILENAME_TSTR:
+		{
+			clock_date_t c	= ns2clock(TS);
+
+			u64 nsec = TS % (u64)1e9;
+
+			u64 msec = (nsec / 1e6); 
+			nsec = nsec - msec * 1e6;
+
+			u64 usec = (nsec / 1e3); 
+			nsec = nsec - usec * 1e3;
+
+			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i.%03lli.%03lli.%03lli.pcap", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec); 
+		}
+		break;
+
+	default:
+		fprintf(stderr, "unknown filename mode\n");
+		assert(false);
+		break;
+	}
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -85,7 +158,11 @@ int main(int argc, char* argv[])
 {
 	char* OutFileName = NULL;
 
-	u64 TargetByte = 0;
+	u64 TargetByte 	= 0;
+	u64 TargetTime 	= 0;
+
+	u32 SplitMode		= 0;
+	u32 FileNameMode	= 0;
 
 	for (int i=1; i < argc; i++)
 	{
@@ -101,13 +178,75 @@ int main(int argc, char* argv[])
 		}
 		else if (strcmp(argv[i], "--split-byte") == 0)
 		{
+			SplitMode = SPLIT_MODE_BYTE; 
+
 			TargetByte = atof(argv[i+1]);
 			i++;
 
 			fprintf(stderr, "Split Every %lli Bytes %.3f GByte\n", TargetByte, TargetByte / (double)kGB(1));
 		}
+		else if (strcmp(argv[i], "--split-time") == 0)
+		{
+			SplitMode = SPLIT_MODE_TIME; 
+
+			TargetTime = atof(argv[i+1]);
+			i++;
+
+			fprintf(stderr, "Split Every %lli Sec\n", TargetTime / 1e9);
+		}
+		else if (strcmp(argv[i], "--filename-epoch-sec") == 0)
+		{
+			fprintf(stderr, "Filename EPOCH Sec\n");
+			FileNameMode	= FILENAME_EPOCH_SEC;
+		}
+		else if (strcmp(argv[i], "--filename-epoch-msec") == 0)
+		{
+			fprintf(stderr, "Filename EPOCH MSec\n");
+			FileNameMode	= FILENAME_EPOCH_MSEC;
+		}
+		else if (strcmp(argv[i], "--filename-epoch-usec") == 0)
+		{
+			fprintf(stderr, "Filename EPOCH Micro Sec\n");
+			FileNameMode	= FILENAME_EPOCH_USEC;
+		}
+		else if (strcmp(argv[i], "--filename-epoch-nsec") == 0)
+		{
+			fprintf(stderr, "Filename EPOCH nano Sec\n");
+			FileNameMode	= FILENAME_EPOCH_NSEC;
+		}
+		else if (strcmp(argv[i], "--filename-tstr") == 0)
+		{
+			fprintf(stderr, "Filename TimeString\n");
+			FileNameMode	= FILENAME_TSTR;
+		}
 	}
 
+	// check for valid config
+	switch (SplitMode)
+	{
+	case SPLIT_MODE_BYTE:
+	case SPLIT_MODE_TIME:
+		break;
+
+	defualt:
+		fprintf(stderr, "invalid config\n");
+		Help();
+		return 0;
+	}
+
+	switch (FileNameMode)
+	{
+	case FILENAME_EPOCH_SEC:
+	case FILENAME_EPOCH_MSEC:
+	case FILENAME_EPOCH_USEC:
+	case FILENAME_EPOCH_NSEC:
+	case FILENAME_TSTR:
+		break;
+
+	default:
+		fprintf(stderr, "invalid filename mode\n");
+		break;
+	}
 
 	FILE* FIn = stdin; 
 	assert(FIn != NULL);
@@ -136,14 +275,16 @@ int main(int argc, char* argv[])
 	FILE* OutFile 				= NULL;
 
 	u64 LastTS					= 0;
+	u64 SplitTS					= 0;
 
 	u8* 			Pkt			= malloc(1024*1024);	
 	PCAPPacket_t*	PktHeader	= (PCAPPacket_t*)Pkt;
-	u8 FileName[1024];	
+
+	u8 FileName[1024];			// filename of the final output
+	u8 FileNamePending[1024];	// filename of the currently active write
 
 	while (!feof(FIn))
 	{
-
 		// header 
 		int rlen = fread(PktHeader, 1, sizeof(PCAPPacket_t), FIn);
 		if (rlen != sizeof(PCAPPacket_t)) break;
@@ -163,41 +304,76 @@ int main(int argc, char* argv[])
 			break;
 		}
 
-		LastTS = (u64)PktHeader->Sec * 1e9 + (u64)PktHeader->NSec * TScale;
+		u64 TS = (u64)PktHeader->Sec * 1e9 + (u64)PktHeader->NSec * TScale;
 
-		// next split ? 
-		if (SplitByte > TargetByte)
+		// split mode
+		bool NewSplit = false;
+		switch (SplitMode)
 		{
-			if (OutFile) fclose(OutFile);
-			clock_date_t c	= ns2clock(LastTS);
+		case SPLIT_MODE_BYTE:
 
-			u64 nsec = LastTS % (u64)1e9;
-
-			u64 msec = (nsec / 1e6); 
-			nsec = nsec - msec * 1e6;
-
-			u64 usec = (nsec / 1e3); 
-			nsec = nsec - usec * 1e3;
-
-			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i.%03lli.%03lli.%03lli.pcap", OutFileName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec); 
-			OutFile 		= fopen(FileName, "wb");
-			if (!OutFile)
+			// next split ? 
+			if (SplitByte > TargetByte)
 			{
-				printf("OutputFilename is invalid [%s]\n", FileName);
-				break;	
-			}	
-			fwrite(&HeaderMaster, 1, sizeof(HeaderMaster), OutFile);	
+				// close file and rename
+				if (OutFile)
+				{
+					fclose(OutFile);
 
-			SplitByte = 0;
+					// rename to file name 
+					rename(FileNamePending, FileName);
+				}
 
+				GenerateFileName(FileNameMode, FileName, OutFileName, TS);
 
-			u8 TimeStr[1024];
-			c	= ns2clock(LastTS);
-			sprintf(TimeStr, "%04i-%02i-%02i %02i:%02i:%02i", c.year, c.month, c.day, c.hour, c.min, c.sec);
+				sprintf(FileNamePending, "%s.pending", FileName);
+				OutFile 		= fopen(FileNamePending, "wb");
+				if (!OutFile)
+				{
+					printf("OutputFilename is invalid [%s]\n", FileName);
+					break;	
+				}	
+				fwrite(&HeaderMaster, 1, sizeof(HeaderMaster), OutFile);	
 
-			double dT = (clock_ns() - StartTS) / 1e9;
-			double Bps = (TotalByte * 8.0) / dT; 
-			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3fGbps : New Split\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Bps / 1e9);
+				SplitByte 	= 0;
+				NewSplit 	= true;
+			}
+			break;
+
+		case SPLIT_MODE_TIME:
+			{
+				s64 dTS = TS - SplitTS;
+				if (dTS > TargetTime) 
+				{
+					SplitTS = (TS / TargetTime);
+					SplitTS *= TargetTime;
+					//fprintf(stderr, "split time: %lli\n", SplitTS);
+
+					// close file and rename
+					if (OutFile)
+					{
+						fclose(OutFile);
+
+						// rename to file name 
+						rename(FileNamePending, FileName);
+					}
+
+					GenerateFileName(FileNameMode, FileName, OutFileName, SplitTS);
+
+					sprintf(FileNamePending, "%s.pending", FileName);
+					OutFile 		= fopen(FileNamePending, "wb");
+					if (!OutFile)
+					{
+						printf("OutputFilename is invalid [%s]\n", FileName);
+						break;	
+					}	
+					fwrite(&HeaderMaster, 1, sizeof(HeaderMaster), OutFile);	
+
+					SplitByte 	= 0;
+					NewSplit 	= true;
+				}
+			}
+			break;
 		}
 
 		// write output
@@ -208,9 +384,22 @@ int main(int argc, char* argv[])
 			break;
 		}
 
+		LastTS = TS;
+
 		SplitByte += sizeof(PCAPPacket_t) + PktHeader->LengthCapture;
 		TotalByte += sizeof(PCAPPacket_t) + PktHeader->LengthCapture;
 		TotalPkt  += 1; 
+
+		if (NewSplit)
+		{
+			u8 TimeStr[1024];
+			clock_date_t c	= ns2clock(TS);
+			sprintf(TimeStr, "%04i-%02i-%02i %02i:%02i:%02i", c.year, c.month, c.day, c.hour, c.min, c.sec);
+
+			double dT = (clock_ns() - StartTS) / 1e9;
+			double Bps = (TotalByte * 8.0) / dT; 
+			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3fGbps : New Split\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Bps / 1e9);
+		}
 
 		if ((TotalPkt % (u64)1e6) == 0)
 		{
@@ -222,7 +411,6 @@ int main(int argc, char* argv[])
 			double Bps = (TotalByte * 8.0) / dT; 
 			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3fGbps\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Bps / 1e9);
 		}
-
 	}
 	fclose(OutFile);
 
