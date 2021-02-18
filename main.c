@@ -171,6 +171,13 @@ int main(int argc, char* argv[])
 			Help();
 			return 0;
 		}
+		// dummy uid for analytics scripts
+		else if (strcmp(argv[i], "--uid") == 0)
+		{
+			u8* UID = argv[i+1];
+			i++;
+			fprintf(stderr, "UID [%s]\n", UID);
+		}
 		else if (strcmp(argv[i], "-o") == 0)
 		{
 			OutFileName = argv[i+1];
@@ -399,6 +406,8 @@ int main(int argc, char* argv[])
 			double dT = (clock_ns() - StartTS) / 1e9;
 			double Bps = (TotalByte * 8.0) / dT; 
 			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3fGbps : New Split\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Bps / 1e9);
+			fflush(stdout);
+			fflush(stderr);
 		}
 
 		if ((TotalPkt % (u64)1e6) == 0)
@@ -410,9 +419,14 @@ int main(int argc, char* argv[])
 			double dT = (clock_ns() - StartTS) / 1e9;
 			double Bps = (TotalByte * 8.0) / dT; 
 			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3fGbps\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Bps / 1e9);
+			fflush(stdout);
+			fflush(stderr);
 		}
 	}
+
+	// close and re-name
 	fclose(OutFile);
+	rename(FileNamePending, FileName);
 
 	printf("Complete\n");
 
