@@ -26,17 +26,18 @@
 
 //---------------------------------------------------------------------------------------------
 
-#define SPLIT_MODE_BYTE				1
-#define SPLIT_MODE_TIME				2
+#define SPLIT_MODE_BYTE					1
+#define SPLIT_MODE_TIME					2
 
-#define FILENAME_EPOCH_SEC			1
-#define FILENAME_EPOCH_MSEC			2
-#define FILENAME_EPOCH_USEC			3
-#define FILENAME_EPOCH_NSEC			4
-#define FILENAME_TSTR_HHMM			5
-#define FILENAME_TSTR_HHMMSS		6
-#define FILENAME_TSTR_HHMMSS_NS		7
-
+#define FILENAME_EPOCH_SEC				1
+#define FILENAME_EPOCH_SEC_STARTEND		2
+#define FILENAME_EPOCH_MSEC				3
+#define FILENAME_EPOCH_USEC				4
+#define FILENAME_EPOCH_NSEC				5
+#define FILENAME_TSTR_HHMM				6
+#define FILENAME_TSTR_HHMMSS			7
+#define FILENAME_TSTR_HHMMSS_NS			8
+	
 //---------------------------------------------------------------------------------------------
 // pcap headers
 
@@ -91,6 +92,7 @@ static void Help(void)
 	printf("--split-time  <nanoseconds> : split by time\n");
 	printf("\n");
 	printf("--filename-epoch-sec          : output epoch sec  filename\n");
+	printf("--filename-epoch-sec-startend : output epoch sec start/end filename\n");
 	printf("--filename-epoch-msec         : output epoch msec filename\n");
 	printf("--filename-epoch-usec         : output epoch usec filename\n");
 	printf("--filename-epoch-nsec         : output epoch nsec filename\n");
@@ -113,14 +115,16 @@ static void Help(void)
 
 //-------------------------------------------------------------------------------------------------
 // various different naming formats 
-static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS)
+static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 TSLast)
 {
 	switch (Mode)
 	{
 	case FILENAME_EPOCH_SEC:
 		sprintf(FileName, "%s_%lli.pcap", BaseName, (u64)(TS / 1e9)); 
 		break;
-
+	case FILENAME_EPOCH_SEC_STARTEND:
+		sprintf(FileName, "%s_%lli-%lli.pcap", BaseName, (u64)(TS / 1e9), (u64)(TSLast / 1e9)); 
+		break;
 	case FILENAME_EPOCH_MSEC:
 		sprintf(FileName, "%s_%lli.pcap", BaseName, (u64)(TS/1e6));
 		break;
@@ -249,6 +253,11 @@ int main(int argc, char* argv[])
 			fprintf(stderr, "Filename EPOCH Sec\n");
 			FileNameMode	= FILENAME_EPOCH_SEC;
 		}
+		else if (strcmp(argv[i], "--filename-epoch-sec-startend") == 0)
+		{
+			fprintf(stderr, "Filename EPOCH Sec Start/End\n");
+			FileNameMode	= FILENAME_EPOCH_SEC_STARTEND;
+		}
 		else if (strcmp(argv[i], "--filename-epoch-msec") == 0)
 		{
 			fprintf(stderr, "Filename EPOCH MSec\n");
@@ -298,6 +307,7 @@ int main(int argc, char* argv[])
 	switch (FileNameMode)
 	{
 	case FILENAME_EPOCH_SEC:
+	case FILENAME_EPOCH_SEC_STARTEND:
 	case FILENAME_EPOCH_MSEC:
 	case FILENAME_EPOCH_USEC:
 	case FILENAME_EPOCH_NSEC:
@@ -388,7 +398,7 @@ int main(int argc, char* argv[])
 					rename(FileNamePending, FileName);
 				}
 
-				GenerateFileName(FileNameMode, FileName, OutFileName, TS);
+				GenerateFileName(FileNameMode, FileName, OutFileName, TS, LastSplitTS);
 
 				sprintf(FileNamePending, "%s.pending", FileName);
 				OutFile 		= fopen(FileNamePending, "wb");
@@ -398,6 +408,8 @@ int main(int argc, char* argv[])
 					break;	
 				}	
 				fwrite(&HeaderMaster, 1, sizeof(HeaderMaster), OutFile);	
+
+				LastSplitTS	= TS;
 
 				SplitByte 	= 0;
 				NewSplit 	= true;
@@ -409,12 +421,13 @@ int main(int argc, char* argv[])
 				s64 dTS = TS - SplitTS;
 				if (dTS > TargetTime) 
 				{
+					u64 _SplitTS = SplitTS;
+
 					SplitTS = (TS / TargetTime);
 					SplitTS *= TargetTime;
 					//fprintf(stderr, "split time: %lli\n", SplitTS);
 
 					// create null PCAPs for anything missing 
-
 
 					// close file and rename
 					if (OutFile)
@@ -425,7 +438,7 @@ int main(int argc, char* argv[])
 						rename(FileNamePending, FileName);
 					}
 
-					GenerateFileName(FileNameMode, FileName, OutFileName, SplitTS);
+					GenerateFileName(FileNameMode, FileName, OutFileName, SplitTS, LastSplitTS);
 
 					sprintf(FileNamePending, "%s.pending", FileName);
 					OutFile 		= fopen(FileNamePending, "wb");
@@ -435,6 +448,8 @@ int main(int argc, char* argv[])
 						break;	
 					}	
 					fwrite(&HeaderMaster, 1, sizeof(HeaderMaster), OutFile);	
+
+					LastSplitTS	= _SplitTS;
 
 					SplitByte 	= 0;
 					NewSplit 	= true;
