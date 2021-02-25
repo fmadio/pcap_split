@@ -123,7 +123,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 		sprintf(FileName, "%s_%lli.pcap", BaseName, (u64)(TS / 1e9)); 
 		break;
 	case FILENAME_EPOCH_SEC_STARTEND:
-		sprintf(FileName, "%s_%lli-%lli.pcap", BaseName, (u64)(TSLast / 1e9), (u64)(TS / 1e9)); 
+		sprintf(FileName, "%lli-%lli.pcap", BaseName, (u64)(TSLast / 1e9), (u64)(TS / 1e9)); 
 		break;
 	case FILENAME_EPOCH_MSEC:
 		sprintf(FileName, "%s_%lli.pcap", BaseName, (u64)(TS/1e6));
@@ -379,6 +379,9 @@ int main(int argc, char* argv[])
 		}
 
 		u64 TS = (u64)PktHeader->Sec * 1e9 + (u64)PktHeader->NSec * TScale;
+
+		// set the first time
+		if (LastSplitTS == 0) LastSplitTS = TS;
 
 		// split mode
 		bool NewSplit = false;
