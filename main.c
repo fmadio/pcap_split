@@ -120,21 +120,21 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 	switch (Mode)
 	{
 	case FILENAME_EPOCH_SEC:
-		sprintf(FileName, "%s_%lli.pcap", BaseName, (u64)(TS / 1e9)); 
+		sprintf(FileName, "%s%lli.pcap", BaseName, (u64)(TS / 1e9)); 
 		break;
 	case FILENAME_EPOCH_SEC_STARTEND:
-		sprintf(FileName, "%lli-%lli.pcap", BaseName, (u64)(TSLast / 1e9), (u64)(TS / 1e9)); 
+		sprintf(FileName, "%s%lli-%lli.pcap", BaseName, (u64)(TSLast / 1e9), (u64)(TS / 1e9)); 
 		break;
 	case FILENAME_EPOCH_MSEC:
-		sprintf(FileName, "%s_%lli.pcap", BaseName, (u64)(TS/1e6));
+		sprintf(FileName, "%s%lli.pcap", BaseName, (u64)(TS/1e6));
 		break;
 
 	case FILENAME_EPOCH_USEC:
-		sprintf(FileName, "%s_%lli.pcap", BaseName, (u64)(TS/1e3));
+		sprintf(FileName, "%s%lli.pcap", BaseName, (u64)(TS/1e3));
 		break;
 
 	case FILENAME_EPOCH_NSEC:
-		sprintf(FileName, "%s_%lli.pcap", BaseName, TS);
+		sprintf(FileName, "%s%lli.pcap", BaseName, TS);
 		break;
 
 	case FILENAME_TSTR_HHMM:
@@ -441,7 +441,7 @@ int main(int argc, char* argv[])
 						rename(FileNamePending, FileName);
 					}
 
-					GenerateFileName(FileNameMode, FileName, OutFileName, SplitTS, LastSplitTS);
+					GenerateFileName(FileNameMode, FileName, OutFileName, SplitTS + TargetTime, SplitTS);
 
 					sprintf(FileNamePending, "%s.pending", FileName);
 					OutFile 		= fopen(FileNamePending, "wb");
