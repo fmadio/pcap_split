@@ -15,6 +15,7 @@
 #include <signal.h>
 #include <pthread.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -37,6 +38,9 @@
 #define FILENAME_TSTR_HHMM				6
 #define FILENAME_TSTR_HHMMSS			7
 #define FILENAME_TSTR_HHMMSS_NS			8
+
+#define OUTPUT_MODE_CAT					1					// cat > blah.pcap
+#define OUTPUT_MODE_RCLONE				2					// rclone rcat 
 	
 //---------------------------------------------------------------------------------------------
 // pcap headers
@@ -74,6 +78,7 @@ typedef struct
 } __attribute__((packed)) PCAPHeader_t;
 
 double TSC2Nano = 0;
+static u8 s_FileNameSuffix[4096];			// suffix to apply to output filename
 
 //-------------------------------------------------------------------------------------------------
 
@@ -97,9 +102,9 @@ static void Help(void)
 	printf("--filename-epoch-usec         : output epoch usec filename\n");
 	printf("--filename-epoch-nsec         : output epoch nsec filename\n");
 
-	printf("--filename-timestr-HHMM       : output time string filename (Hour Min)\n");
-	printf("--filename-timestr-HHMMSS     : output time string filename (Hour Min Sec)\n");
-	printf("--filename-timestr-HHMMSS_NS  : output time string filename (Hour Min Sec Nanos)\n");
+	printf("--filename-tstr-HHMM       : output time string filename (Hour Min)\n");
+	printf("--filename-tstr-HHMMSS     : output time string filename (Hour Min Sec)\n");
+	printf("--filename-tstr-HHMMSS_NS  : output time string filename (Hour Min Sec Nanos)\n");
 	printf("\n");
 	printf("example: split every 100GB\n");
 	printf("$ cat my_big_capture.pcap | pcap_split -o my_big_capture_ --split-byte 100e9\n");
@@ -120,21 +125,21 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 	switch (Mode)
 	{
 	case FILENAME_EPOCH_SEC:
-		sprintf(FileName, "%s%lli.pcap", BaseName, (u64)(TS / 1e9)); 
+		sprintf(FileName, "%s%lli%s", BaseName, (u64)(TS / 1e9), s_FileNameSuffix); 
 		break;
 	case FILENAME_EPOCH_SEC_STARTEND:
-		sprintf(FileName, "%s%lli-%lli.pcap", BaseName, (u64)(TSLast / 1e9), (u64)(TS / 1e9)); 
+		sprintf(FileName, "%s%lli-%lli%s", BaseName, (u64)(TSLast / 1e9), (u64)(TS / 1e9), s_FileNameSuffix); 
 		break;
 	case FILENAME_EPOCH_MSEC:
-		sprintf(FileName, "%s%lli.pcap", BaseName, (u64)(TS/1e6));
+		sprintf(FileName, "%s%lli%s", BaseName, (u64)(TS/1e6), s_FileNameSuffix);
 		break;
 
 	case FILENAME_EPOCH_USEC:
-		sprintf(FileName, "%s%lli.pcap", BaseName, (u64)(TS/1e3));
+		sprintf(FileName, "%s%lli%s", BaseName, (u64)(TS/1e3), s_FileNameSuffix);
 		break;
 
 	case FILENAME_EPOCH_NSEC:
-		sprintf(FileName, "%s%lli.pcap", BaseName, TS);
+		sprintf(FileName, "%s%lli%s", BaseName, TS, s_FileNameSuffix);
 		break;
 
 	case FILENAME_TSTR_HHMM:
@@ -149,7 +154,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i.pcap", BaseName, c.year, c.month, c.day, c.hour, c.min);
+			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, s_FileNameSuffix);
 		}
 		break;
 
@@ -165,7 +170,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i.pcap", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec); 
+			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, s_FileNameSuffix); 
 		}
 		break;
 
@@ -181,13 +186,50 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i.%03lli.%03lli.%03lli.pcap", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec); 
+			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i.%03lli.%03lli.%03lli%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec, s_FileNameSuffix); 
 		}
 		break;
 
 	default:
 		fprintf(stderr, "unknown filename mode\n");
 		assert(false);
+		break;
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+// generate pipe command based on config 
+static void GeneratePipeCmd(u8* Cmd, u32 Mode, u8* PipeCmd, u8* FileName)
+{
+	switch (Mode)
+	{
+	case OUTPUT_MODE_CAT:
+		sprintf(Cmd, "%s > %s", PipeCmd, FileName);
+		break;
+
+	case OUTPUT_MODE_RCLONE:
+		sprintf(Cmd, "%s | rclone rcat %s", PipeCmd, FileName);
+		break;
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+// rename file 
+static void RenameFile(u32 Mode, u8* FileNamePending, u8* FileName)
+{
+	switch (Mode)
+	{
+	case OUTPUT_MODE_CAT:
+		rename(FileNamePending, FileName);
+		break;
+
+	case OUTPUT_MODE_RCLONE:
+		{
+			u8 Cmd[4096];
+			sprintf(Cmd, "rclone moveto %s %s", FileNamePending, FileName);
+			printf("Cmd [%s]\n", Cmd);
+			system(Cmd);
+		}
 		break;
 	}
 }
@@ -203,6 +245,16 @@ int main(int argc, char* argv[])
 
 	u32 SplitMode		= 0;
 	u32 FileNameMode	= 0;
+
+	// default do nothing output
+	u8 PipeCmd[4096];		
+	strcpy(PipeCmd, "cat");
+
+	// default .pcap raw
+	strcpy(s_FileNameSuffix, ".pcap");
+
+	// output to rclone
+	u32 OutputMode  = OUTPUT_MODE_CAT;
 
 	fprintf(stderr, "args\n");
 	for (int i=1; i < argc; i++)
@@ -283,12 +335,29 @@ int main(int argc, char* argv[])
 			fprintf(stderr, "Filename TimeString HHMMSS\n");
 			FileNameMode	= FILENAME_TSTR_HHMMSS;
 		}
-
 		else if (strcmp(argv[i], "--filename-tstr-HHMMSS_NS") == 0)
 		{
 			fprintf(stderr, "Filename TimeString HHMMSS Nano\n");
 			FileNameMode	= FILENAME_TSTR_HHMMSS_NS;
 		}
+		else if (strcmp(argv[i], "--pipe-cmd") == 0)
+		{
+			strncpy(PipeCmd, argv[i+1], sizeof(PipeCmd));	
+			fprintf(stderr, "pipe cmd [%s]\n", PipeCmd);
+			i++;
+		}
+		else if (strcmp(argv[i], "--filename-suffix") == 0)
+		{
+			strncpy(s_FileNameSuffix, argv[i+1], sizeof(s_FileNameSuffix));	
+			fprintf(stderr, "Filename Suffix [%s]\n", s_FileNameSuffix);
+			i++;
+		}
+		else if (strcmp(argv[i], "--rclone") == 0)
+		{
+			OutputMode = OUTPUT_MODE_RCLONE;
+			fprintf(stderr, "Output Mode RClone\n");
+		}
+
 	}
 
 	// check for valid config
@@ -398,19 +467,25 @@ int main(int argc, char* argv[])
 					fclose(OutFile);
 
 					// rename to file name 
-					rename(FileNamePending, FileName);
+					RenameFile(OutputMode, FileNamePending, FileName);
 				}
 
 				GenerateFileName(FileNameMode, FileName, OutFileName, TS, LastSplitTS);
-
 				sprintf(FileNamePending, "%s.pending", FileName);
-				OutFile 		= fopen(FileNamePending, "wb");
+
+				u8 Cmd[4095];
+				GeneratePipeCmd(Cmd, OutputMode, PipeCmd, FileNamePending);
+
+				printf("[%s]\n", Cmd);
+				OutFile 		= popen(Cmd, "w");
 				if (!OutFile)
 				{
-					printf("OutputFilename is invalid [%s]\n", FileName);
+					printf("OutputFilename is invalid [%s] %i %s\n", FileName, errno, strerror(errno));
 					break;	
-				}	
+				}
+
 				fwrite(&HeaderMaster, 1, sizeof(HeaderMaster), OutFile);	
+				fflush(OutFile);
 
 				LastSplitTS	= TS;
 
@@ -438,13 +513,18 @@ int main(int argc, char* argv[])
 						fclose(OutFile);
 
 						// rename to file name 
-						rename(FileNamePending, FileName);
+						RenameFile(OutputMode, FileNamePending, FileName);
 					}
 
 					GenerateFileName(FileNameMode, FileName, OutFileName, SplitTS + TargetTime, SplitTS);
-
 					sprintf(FileNamePending, "%s.pending", FileName);
-					OutFile 		= fopen(FileNamePending, "wb");
+
+					//OutFile 		= fopen(FileNamePending, "wb");
+
+					u8 Cmd[4095];
+					sprintf(Cmd, "%s > %s", PipeCmd, FileNamePending);
+					printf("[%s]\n", Cmd);
+					OutFile 		= popen(Cmd, "w");
 					if (!OutFile)
 					{
 						printf("OutputFilename is invalid [%s]\n", FileName);
