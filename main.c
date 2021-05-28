@@ -106,6 +106,12 @@ static void Help(void)
 	printf("--filename-tstr-HHMMSS     : output time string filename (Hour Min Sec)\n");
 	printf("--filename-tstr-HHMMSS_NS  : output time string filename (Hour Min Sec Nanos)\n");
 	printf("\n");
+	printf("--filename-suffix          : filename suffix (default .pcap)\n");
+	printf("\n");
+	printf("--pipe-cmd                 : introduce a pipe command before final output\n");
+	printf("--rclone                   : endpoint is an rclone endpoint\n");
+	printf("\n");
+	printf("\n");
 	printf("example: split every 100GB\n");
 	printf("$ cat my_big_capture.pcap | pcap_split -o my_big_capture_ --split-byte 100e9\n");
 	printf("\n");
