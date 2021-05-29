@@ -259,7 +259,7 @@ int main(int argc, char* argv[])
 	// default .pcap raw
 	strcpy(s_FileNameSuffix, ".pcap");
 
-	// output to rclone
+	// output to cat by default 
 	u32 OutputMode  = OUTPUT_MODE_CAT;
 
 	fprintf(stderr, "args\n");
@@ -528,7 +528,7 @@ int main(int argc, char* argv[])
 					//OutFile 		= fopen(FileNamePending, "wb");
 
 					u8 Cmd[4095];
-					sprintf(Cmd, "%s > %s", PipeCmd, FileNamePending);
+					GeneratePipeCmd(Cmd, OutputMode, PipeCmd, FileNamePending);
 					printf("[%s]\n", Cmd);
 					OutFile 		= popen(Cmd, "w");
 					if (!OutFile)
