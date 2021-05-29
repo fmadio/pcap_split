@@ -214,7 +214,7 @@ static void GeneratePipeCmd(u8* Cmd, u32 Mode, u8* PipeCmd, u8* FileName)
 		break;
 
 	case OUTPUT_MODE_RCLONE:
-		sprintf(Cmd, "%s | rclone rcat %s", PipeCmd, FileName);
+		sprintf(Cmd, "%s | rclone --config=/opt/fmadio/etc/rclone.conf rcat %s", PipeCmd, FileName);
 		break;
 	}
 }
@@ -232,7 +232,7 @@ static void RenameFile(u32 Mode, u8* FileNamePending, u8* FileName)
 	case OUTPUT_MODE_RCLONE:
 		{
 			u8 Cmd[4096];
-			sprintf(Cmd, "rclone moveto %s %s", FileNamePending, FileName);
+			sprintf(Cmd, "rclone --config=/opt/fmadio/etc/rclone.conf moveto %s %s", FileNamePending, FileName);
 			printf("Cmd [%s]\n", Cmd);
 			system(Cmd);
 		}
