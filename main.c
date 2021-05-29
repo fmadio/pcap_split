@@ -588,9 +588,9 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	// close and re-name
+	// final close and re-name
 	fclose(OutFile);
-	rename(FileNamePending, FileName);
+	RenameFile(OutputMode, FileNamePending, FileName);
 
 	printf("Complete\n");
 
