@@ -373,7 +373,7 @@ int main(int argc, char* argv[])
 	case SPLIT_MODE_TIME:
 		break;
 
-	defualt:
+	default:
 		fprintf(stderr, "invalid config\n");
 		Help();
 		return 0;
