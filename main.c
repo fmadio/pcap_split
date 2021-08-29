@@ -47,6 +47,8 @@
 
 #define PCAPHEADER_MAGIC_NANO		0xa1b23c4d
 #define PCAPHEADER_MAGIC_USEC		0xa1b2c3d4
+#define PCAPHEADER_MAGIC_FMAD		0x1337bab3
+
 #define PCAPHEADER_MAJOR			2
 #define PCAPHEADER_MINOR			4
 #define PCAPHEADER_LINK_ETHERNET	1
@@ -77,7 +79,54 @@ typedef struct
 
 } __attribute__((packed)) PCAPHeader_t;
 
-double TSC2Nano = 0;
+// packet header
+typedef struct FMADPacket_t
+{
+	u64             TS;                     // 64bit nanosecond epoch
+
+	u32             LengthCapture   : 16;   // length captured
+	u32             LengthWire      : 16;   // Length on the wire
+
+	u32             PortNo          :  8;   // Port number
+	u32             Flag            :  8;   // flags
+	u32             pad0            : 16;
+
+} __attribute__((packed)) FMADPacket_t;
+
+#define FMAD_PACKET_FLAG_FCS		(1<<0)		// flags invalid FCS was captured 
+
+// header per packet
+typedef struct FMADHeader_t
+{
+	u16				PktCnt;					// number of packets
+	u16				CRC16;
+
+	u32				BytesWire;				// total wire bytes  
+	u32				BytesCapture;			// total capture bytes 
+	u32				Length;					// length of this block in bytes
+
+	u64				TSStart;				// TS of first packet
+	u64				TSEnd;					// TS of last packet 
+
+	// internal performance stats passed downstream
+	u64				BytePending;			// how many bytes pending 
+	u16				CPUActive;				// cpu pct stream_cat is active  
+	u16				CPUFetch;	
+	u16				CPUSend;	
+	u16				pad1;			
+
+} __attribute__((packed)) FMADHeader_t;
+
+//-------------------------------------------------------------------------------------------------
+// input mode 
+
+#define INPUT_MODE_NULL		0
+#define INPUT_MODE_PCAP		1
+#define INPUT_MODE_FMAD		2
+
+static u8*		s_FMADChunkBuffer	= NULL;
+
+double TSC2Nano 					= 0;
 static u8 s_FileNameSuffix[4096];			// suffix to apply to output filename
 
 //-------------------------------------------------------------------------------------------------
@@ -250,7 +299,7 @@ int main(int argc, char* argv[])
 	u64 TargetTime 	= 0;
 
 	u32 SplitMode		= 0;
-	u32 FileNameMode	= 0;
+	u32 FileNameMode	= FILENAME_TSTR_HHMMSS;
 
 	// default do nothing output
 	u8 PipeCmd[4096];		
@@ -363,7 +412,6 @@ int main(int argc, char* argv[])
 			OutputMode = OUTPUT_MODE_RCLONE;
 			fprintf(stderr, "Output Mode RClone\n");
 		}
-
 	}
 
 	// check for valid config
@@ -408,13 +456,42 @@ int main(int argc, char* argv[])
 		return 0;
 	}
 
-	u64 TScale = 0;
+	// work out the input file format
+	bool InputMode 		= INPUT_MODE_NULL;
+
+	u64 TScale 			= 0;
 	switch (HeaderMaster.Magic)
 	{
-	case PCAPHEADER_MAGIC_NANO: printf("PCAP Nano\n"); TScale = 1;    break;
-	case PCAPHEADER_MAGIC_USEC: printf("PCAP Micro\n"); TScale = 1000; break;
+	case PCAPHEADER_MAGIC_NANO: 
+		printf("PCAP Nano\n"); 
+		TScale 			= 1;    
+		InputMode		= INPUT_MODE_PCAP;
+		break;
+
+	case PCAPHEADER_MAGIC_USEC: 
+		printf("PCAP Micro\n"); 
+		TScale 			= 1000; 
+		InputMode		= INPUT_MODE_PCAP;
+		break;
+
+	case PCAPHEADER_MAGIC_FMAD: 
+		fprintf(stderr, "FMAD Format Chunked\n");
+		TScale 			= 1; 
+		InputMode		= INPUT_MODE_FMAD;
+
+		break;
 	}
 
+	// force it to nsec pacp
+	HeaderMaster.Magic 		= PCAPHEADER_MAGIC_NANO;
+	HeaderMaster.Major 		= PCAPHEADER_MAJOR;
+	HeaderMaster.Minor 		= PCAPHEADER_MINOR;
+	HeaderMaster.TimeZone 	= 0;
+	HeaderMaster.SigFlag 	= 0;
+	HeaderMaster.SnapLen 	= 0xffff;
+	HeaderMaster.Link 		= 0;
+
+	// split stats
 	u64 StartTS					= clock_ns();
 	u64 TotalByte				= 0;
 	u64 TotalPkt				= 0;
@@ -432,28 +509,115 @@ int main(int argc, char* argv[])
 	u8 FileName[1024];			// filename of the final output
 	u8 FileNamePending[1024];	// filename of the currently active write
 
-	while (!feof(FIn))
+	// chunked fmad buffer
+	u32 FMADChunkBufferPos	= 0;
+	u32 FMADChunkBufferMax	= 0;
+	u8* FMADChunkBuffer 	= NULL; 
+
+	u32 FMADChunkPktCnt		= 0;
+	u32 FMADChunkPktMax		= 0;
+
+	// init
+	switch (InputMode)
 	{
-		// header 
-		int rlen = fread(PktHeader, 1, sizeof(PCAPPacket_t), FIn);
-		if (rlen != sizeof(PCAPPacket_t)) break;
+	case INPUT_MODE_PCAP:
+		break;
 
-		// validate size
-		if ((PktHeader->LengthCapture == 0) || (PktHeader->LengthCapture > 128*1024)) 
+	case INPUT_MODE_FMAD:
+		FMADChunkBufferPos	= 0;
+		FMADChunkBufferMax	= 0;
+		FMADChunkBuffer		= malloc(1024*1024);
+		break;
+	}
+
+	bool IsExit = false;
+	while (!IsExit)
+	{
+		switch (InputMode)
 		{
-			printf("Invalid packet length: %i\n", PktHeader->LengthCapture);
-			break;
+		// standard pcap mode
+		case INPUT_MODE_PCAP:
+		{
+			// header 
+			int rlen = fread(PktHeader, 1, sizeof(PCAPPacket_t), FIn);
+			if (rlen != sizeof(PCAPPacket_t)) break;
+
+			// validate size
+			if ((PktHeader->LengthCapture == 0) || (PktHeader->LengthCapture > 128*1024)) 
+			{
+				printf("Invalid packet length: %i\n", PktHeader->LengthCapture);
+				break;
+			}
+
+			// payload
+			rlen = fread(PktHeader + 1, 1, PktHeader->LengthCapture, FIn);
+			if (rlen != PktHeader->LengthCapture)
+			{
+				printf("payload read fail %i expect %i\n", rlen, PktHeader->LengthCapture);
+				break;
+			}
+
+		}
+		break;
+
+		case INPUT_MODE_FMAD:
+		{
+			// load new buffer
+			if (FMADChunkPktCnt >= FMADChunkPktMax)
+			{
+				FMADHeader_t Header;
+
+				u32 Timeout = 0; 
+				while (true)
+				{
+					int rlen = fread(&Header, 1, sizeof(Header), FIn);
+					if (rlen != sizeof(Header))
+					{
+						fprintf(stderr, "FMADHeader read fail: %i %i : %i\n", rlen, sizeof(Header), errno, strerror(errno));
+						IsExit = true;
+						break;
+					}
+
+					if (Header.PktCnt > 0) break;
+					assert(Timeout++ < 1e6);
+				}
+
+				// sanity checks
+				assert(Header.Length < 1024*1024);
+				assert(Header.PktCnt < 1e6);
+
+				rlen = fread(FMADChunkBuffer, 1, Header.Length, FIn);
+				if (rlen != Header.Length)
+				{
+					fprintf(stderr, "FMADHeader payload read fail: %i %i : %i\n", rlen, Header.Length, errno, strerror(errno));
+					break;
+				}
+
+				FMADChunkBufferPos 	= 0;
+				FMADChunkBufferMax 	= Header.Length;
+
+				FMADChunkPktCnt 	= 0;
+				FMADChunkPktMax 	= Header.PktCnt;
+			}
+
+			// FMAD to PCAP packet
+			FMADPacket_t* FMADPacket = (FMADPacket_t*)(FMADChunkBuffer + FMADChunkBufferPos);
+
+			PktHeader->Length			= FMADPacket->LengthWire;	
+			PktHeader->LengthCapture	= FMADPacket->LengthCapture;	
+			PktHeader->Sec				= FMADPacket->TS / (u64)1e9;	
+			PktHeader->NSec				= FMADPacket->TS % (u64)1e9;	
+
+			// payload
+			memcpy(PktHeader + 1, FMADPacket + 1, FMADPacket->LengthCapture);
+
+			FMADChunkPktCnt++;
+			FMADChunkBufferPos += sizeof(FMADPacket_t) + FMADPacket->LengthCapture;
+		}
+		break;
 		}
 
-		// payload
-		rlen = fread(PktHeader + 1, 1, PktHeader->LengthCapture, FIn);
-		if (rlen != PktHeader->LengthCapture)
-		{
-			printf("payload read fail %i expect %i\n", rlen, PktHeader->LengthCapture);
-			break;
-		}
-
-		u64 TS = (u64)PktHeader->Sec * 1e9 + (u64)PktHeader->NSec * TScale;
+		u64 TS = (u64)PktHeader->Sec * ((u64)1e9) + (u64)PktHeader->NSec * TScale;
 
 		// set the first time
 		if (LastSplitTS == 0) LastSplitTS = TS;
