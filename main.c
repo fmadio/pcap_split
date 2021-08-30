@@ -530,6 +530,10 @@ int main(int argc, char* argv[])
 		break;
 	}
 
+	// stats
+	u64 LastPrintTS 		= 0;
+	u64 LastPrintByte 		= 0;
+
 	bool IsExit = false;
 	while (!IsExit)
 	{
@@ -744,11 +748,17 @@ int main(int argc, char* argv[])
 			clock_date_t c	= ns2clock(LastTS);
 			sprintf(TimeStr, "%04i-%02i-%02i %02i:%02i:%02i", c.year, c.month, c.day, c.hour, c.min, c.sec);
 
-			double dT = (clock_ns() - StartTS) / 1e9;
-			double Bps = (TotalByte * 8.0) / dT; 
+			u64 TS = clock_ns();
+
+			double dT 		= (TS - LastPrintTS) / 1e9; 
+			double dByte 	= TotalByte - LastPrintByte; 
+			double Bps 		= (dByte * 8.0) / dT; 
 			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3fGbps\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Bps / 1e9);
 			fflush(stdout);
 			fflush(stderr);
+
+			LastPrintTS = TS;
+			LastPrintByte = TotalByte;
 		}
 	}
 
