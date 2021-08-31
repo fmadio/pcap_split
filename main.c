@@ -553,6 +553,7 @@ int main(int argc, char* argv[])
 	// stats
 	u64 LastPrintTS 		= 0;
 	u64 LastPrintByte 		= 0;
+	u64 LastPrintPkt 		= 0;
 
 	bool IsExit = false;
 	while (!IsExit)
@@ -772,13 +773,16 @@ int main(int argc, char* argv[])
 
 			double dT 		= (TS - LastPrintTS) / 1e9; 
 			double dByte 	= TotalByte - LastPrintByte; 
+			double dPacket 	= TotalPkt  - LastPrintPkt; 
 			double Bps 		= (dByte * 8.0) / dT; 
-			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3fGbps\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Bps / 1e9);
+			double Pps 		= (dPacket * 8.0) / dT; 
+			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3fMpps %.3fGbps\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Pps / 1e6 ,Bps / 1e9);
 			fflush(stdout);
 			fflush(stderr);
 
-			LastPrintTS = TS;
-			LastPrintByte = TotalByte;
+			LastPrintTS 	= TS;
+			LastPrintByte 	= TotalByte;
+			LastPrintPkt 	= TotalPkt;
 		}
 	}
 
