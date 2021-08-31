@@ -8,7 +8,7 @@ DEF += -D_LARGEFILE64_SOURCE
 DEF += -D_GNU_SOURCE 
 
 LIBS =
-LIBS += -lm
+LIBS += -lm -lpthread
 
 %.o: %.c
 	gcc $(DEF) -c -o $@ $<

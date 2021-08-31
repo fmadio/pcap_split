@@ -141,24 +141,27 @@ static void Help(void)
 	printf("\n");
 	printf("NOTE: Input PCAP`s are always read from STDIN\n");
 	printf("\n");
-	printf("-v                          : verbose output\n");
-	printf("--split-byte  <byte count>  : split by bytes\n");
-	printf("--split-time  <nanoseconds> : split by time\n");
-	printf("\n");
-	printf("--filename-epoch-sec          : output epoch sec  filename\n");
-	printf("--filename-epoch-sec-startend : output epoch sec start/end filename\n");
-	printf("--filename-epoch-msec         : output epoch msec filename\n");
-	printf("--filename-epoch-usec         : output epoch usec filename\n");
-	printf("--filename-epoch-nsec         : output epoch nsec filename\n");
 
-	printf("--filename-tstr-HHMM       : output time string filename (Hour Min)\n");
-	printf("--filename-tstr-HHMMSS     : output time string filename (Hour Min Sec)\n");
-	printf("--filename-tstr-HHMMSS_NS  : output time string filename (Hour Min Sec Nanos)\n");
+	printf("--cpu  <cpu id>                : bind specifically to a CPU\n");
 	printf("\n");
-	printf("--filename-suffix          : filename suffix (default .pcap)\n");
+	printf("-v                             : verbose output\n");
+	printf("--split-byte  <byte count>     : split by bytes\n");
+	printf("--split-time  <nanoseconds>    : split by time\n");
 	printf("\n");
-	printf("--pipe-cmd                 : introduce a pipe command before final output\n");
-	printf("--rclone                   : endpoint is an rclone endpoint\n");
+	printf("--filename-epoch-sec           : output epoch sec  filename\n");
+	printf("--filename-epoch-sec-startend  : output epoch sec start/end filename\n");
+	printf("--filename-epoch-msec          : output epoch msec filename\n");
+	printf("--filename-epoch-usec          : output epoch usec filename\n");
+	printf("--filename-epoch-nsec          : output epoch nsec filename\n");
+
+	printf("--filename-tstr-HHMM           : output time string filename (Hour Min)\n");
+	printf("--filename-tstr-HHMMSS         : output time string filename (Hour Min Sec)\n");
+	printf("--filename-tstr-HHMMSS_NS      : output time string filename (Hour Min Sec Nanos)\n");
+	printf("\n");
+	printf("--filename-suffix              : filename suffix (default .pcap)\n");
+	printf("\n");
+	printf("--pipe-cmd                     : introduce a pipe command before final output\n");
+	printf("--rclone                       : endpoint is an rclone endpoint\n");
 	printf("\n");
 	printf("\n");
 	printf("example: split every 100GB\n");
@@ -293,13 +296,15 @@ static void RenameFile(u32 Mode, u8* FileNamePending, u8* FileName)
 
 int main(int argc, char* argv[])
 {
-	char* OutFileName = NULL;
+	char* OutFileName 	= NULL;
 
-	u64 TargetByte 	= 0;
-	u64 TargetTime 	= 0;
+	u64 TargetByte 		= 0;
+	u64 TargetTime 		= 0;
 
 	u32 SplitMode		= 0;
 	u32 FileNameMode	= FILENAME_TSTR_HHMMSS;
+
+	u32 CPUID			= 0;
 
 	// default do nothing output
 	u8 PipeCmd[4096];		
@@ -336,6 +341,12 @@ int main(int argc, char* argv[])
 		{
 			OutFileName = argv[i+1];
 			i++;
+		}
+		else if (strcmp(argv[i], "--cpu") == 0)
+		{
+			CPUID = atoi(argv[i+1]);
+			i++;
+			fprintf(stderr, "CPU ID:%i\n", CPUID);
 		}
 		else if (strcmp(argv[i], "--split-byte") == 0)
 		{
@@ -412,6 +423,15 @@ int main(int argc, char* argv[])
 			OutputMode = OUTPUT_MODE_RCLONE;
 			fprintf(stderr, "Output Mode RClone\n");
 		}
+	}
+
+	// set cpu affinity
+	if (CPUID != -1)
+	{
+		cpu_set_t	MainCPUS;
+		CPU_ZERO(&MainCPUS);
+		CPU_SET(CPUID, &MainCPUS);
+		pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &MainCPUS);
 	}
 
 	// check for valid config
