@@ -565,12 +565,18 @@ int main(int argc, char* argv[])
 		{
 			// header 
 			int rlen = fread(PktHeader, 1, sizeof(PCAPPacket_t), FIn);
-			if (rlen != sizeof(PCAPPacket_t)) break;
+			if (rlen != sizeof(PCAPPacket_t))
+			{
+				printf("Invalid packet read size: %i (%i)\n", rlen, errno);
+				IsExit = true;
+				break;
+			}
 
 			// validate size
 			if ((PktHeader->LengthCapture == 0) || (PktHeader->LengthCapture > 128*1024)) 
 			{
 				printf("Invalid packet length: %i\n", PktHeader->LengthCapture);
+				IsExit = true;
 				break;
 			}
 
@@ -578,7 +584,8 @@ int main(int argc, char* argv[])
 			rlen = fread(PktHeader + 1, 1, PktHeader->LengthCapture, FIn);
 			if (rlen != PktHeader->LengthCapture)
 			{
-				printf("payload read fail %i expect %i\n", rlen, PktHeader->LengthCapture);
+				printf("payload read fail %i (%i) expect %i\n", rlen, errno, PktHeader->LengthCapture);
+				IsExit = true;
 				break;
 			}
 
