@@ -68,7 +68,6 @@ typedef struct
 
 typedef struct
 {
-
 	u32				Magic;
 	u16				Major;
 	u16				Minor;
@@ -509,7 +508,7 @@ int main(int argc, char* argv[])
 	HeaderMaster.TimeZone 	= 0;
 	HeaderMaster.SigFlag 	= 0;
 	HeaderMaster.SnapLen 	= 0xffff;
-	HeaderMaster.Link 		= 0;
+	HeaderMaster.Link 		= 1;				// set as ethernet
 
 	// split stats
 	u64 StartTS					= clock_ns();
@@ -575,7 +574,7 @@ int main(int argc, char* argv[])
 			// validate size
 			if ((PktHeader->LengthCapture == 0) || (PktHeader->LengthCapture > 128*1024)) 
 			{
-				printf("Invalid packet length: %i\n", PktHeader->LengthCapture);
+				printf("Invalid packet length: %i : %s\n", PktHeader->LengthCapture, FormatTS(LastTS) );
 				IsExit = true;
 				break;
 			}
@@ -588,7 +587,6 @@ int main(int argc, char* argv[])
 				IsExit = true;
 				break;
 			}
-
 		}
 		break;
 
@@ -647,6 +645,10 @@ int main(int argc, char* argv[])
 			FMADChunkBufferPos += sizeof(FMADPacket_t) + FMADPacket->LengthCapture;
 		}
 		break;
+
+		default:
+			assert(false);
+			break;
 		}
 
 		u64 TS = (u64)PktHeader->Sec * ((u64)1e9) + (u64)PktHeader->NSec * TScale;
