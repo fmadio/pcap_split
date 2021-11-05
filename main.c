@@ -137,6 +137,10 @@ static u8		s_CURLPrefix[4096] 	= { 0 };	// curl path prefix
 
 static u8		s_PipeCmd[4096] 	= { 0 };	// allow compression and other stuff
 
+// hooks to run local scripts
+static bool		s_ScriptNew				= false;	// run this script before every filefile 
+static u8		s_ScriptNewCmd[4096]	= { 0 };
+
 //-------------------------------------------------------------------------------------------------
 
 static void Help(void)
@@ -369,18 +373,19 @@ int main(int argc, char* argv[])
 		{
 			u8* UID = argv[i+1];
 			i++;
-			fprintf(stderr, "UID [%s]\n", UID);
+			fprintf(stderr, "    UID [%s]\n", UID);
 		}
 		else if (strcmp(argv[i], "-o") == 0)
 		{
 			OutFileName = argv[i+1];
+			fprintf(stderr, "    OutputName [%s]\n", OutFileName);
 			i++;
 		}
 		else if (strcmp(argv[i], "--cpu") == 0)
 		{
 			CPUID = atoi(argv[i+1]);
 			i++;
-			fprintf(stderr, "CPU ID:%i\n", CPUID);
+			fprintf(stderr, "    CPU ID:%i\n", CPUID);
 		}
 		else if (strcmp(argv[i], "--split-byte") == 0)
 		{
@@ -389,7 +394,7 @@ int main(int argc, char* argv[])
 			TargetByte = atof(argv[i+1]);
 			i++;
 
-			fprintf(stderr, "Split Every %lli Bytes %.3f GByte\n", TargetByte, TargetByte / (double)kGB(1));
+			fprintf(stderr, "    Split Every %lli Bytes %.3f GByte\n", TargetByte, TargetByte / (double)kGB(1));
 		}
 		else if (strcmp(argv[i], "--split-time") == 0)
 		{
@@ -398,64 +403,64 @@ int main(int argc, char* argv[])
 			TargetTime = atof(argv[i+1]);
 			i++;
 
-			fprintf(stderr, "Split Every %lli Sec\n", TargetTime / 1e9);
+			fprintf(stderr, "    Split Every %lli Sec\n", TargetTime / 1e9);
 		}
 		else if (strcmp(argv[i], "--filename-epoch-sec") == 0)
 		{
-			fprintf(stderr, "Filename EPOCH Sec\n");
+			fprintf(stderr, "    Filename EPOCH Sec\n");
 			FileNameMode	= FILENAME_EPOCH_SEC;
 		}
 		else if (strcmp(argv[i], "--filename-epoch-sec-startend") == 0)
 		{
-			fprintf(stderr, "Filename EPOCH Sec Start/End\n");
+			fprintf(stderr, "    Filename EPOCH Sec Start/End\n");
 			FileNameMode	= FILENAME_EPOCH_SEC_STARTEND;
 		}
 		else if (strcmp(argv[i], "--filename-epoch-msec") == 0)
 		{
-			fprintf(stderr, "Filename EPOCH MSec\n");
+			fprintf(stderr, "    Filename EPOCH MSec\n");
 			FileNameMode	= FILENAME_EPOCH_MSEC;
 		}
 		else if (strcmp(argv[i], "--filename-epoch-usec") == 0)
 		{
-			fprintf(stderr, "Filename EPOCH Micro Sec\n");
+			fprintf(stderr, "    Filename EPOCH Micro Sec\n");
 			FileNameMode	= FILENAME_EPOCH_USEC;
 		}
 		else if (strcmp(argv[i], "--filename-epoch-nsec") == 0)
 		{
-			fprintf(stderr, "Filename EPOCH nano Sec\n");
+			fprintf(stderr, "    Filename EPOCH nano Sec\n");
 			FileNameMode	= FILENAME_EPOCH_NSEC;
 		}
 		else if (strcmp(argv[i], "--filename-tstr-HHMM") == 0)
 		{
-			fprintf(stderr, "Filename TimeString HHMM\n");
+			fprintf(stderr, "    Filename TimeString HHMM\n");
 			FileNameMode	= FILENAME_TSTR_HHMM;
 		}
 		else if (strcmp(argv[i], "--filename-tstr-HHMMSS") == 0)
 		{
-			fprintf(stderr, "Filename TimeString HHMMSS\n");
+			fprintf(stderr, "    Filename TimeString HHMMSS\n");
 			FileNameMode	= FILENAME_TSTR_HHMMSS;
 		}
 		else if (strcmp(argv[i], "--filename-tstr-HHMMSS_NS") == 0)
 		{
-			fprintf(stderr, "Filename TimeString HHMMSS Nano\n");
+			fprintf(stderr, "    Filename TimeString HHMMSS Nano\n");
 			FileNameMode	= FILENAME_TSTR_HHMMSS_NS;
 		}
 		else if (strcmp(argv[i], "--pipe-cmd") == 0)
 		{
 			strncpy(s_PipeCmd, argv[i+1], sizeof(s_PipeCmd));	
-			fprintf(stderr, "pipe cmd [%s]\n", s_PipeCmd);
+			fprintf(stderr, "    pipe cmd [%s]\n", s_PipeCmd);
 			i++;
 		}
 		else if (strcmp(argv[i], "--filename-suffix") == 0)
 		{
 			strncpy(s_FileNameSuffix, argv[i+1], sizeof(s_FileNameSuffix));	
-			fprintf(stderr, "Filename Suffix [%s]\n", s_FileNameSuffix);
+			fprintf(stderr, "    Filename Suffix [%s]\n", s_FileNameSuffix);
 			i++;
 		}
 		else if (strcmp(argv[i], "--rclone") == 0)
 		{
 			OutputMode = OUTPUT_MODE_RCLONE;
-			fprintf(stderr, "Output Mode RClone\n");
+			fprintf(stderr, "    Output Mode RClone\n");
 		}
 		else if (strcmp(argv[i], "--curl") == 0)
 		{
@@ -463,13 +468,21 @@ int main(int argc, char* argv[])
 			strncpy(s_CURLPrefix, 	argv[i+2], sizeof(CurlCmd));	
 
 			OutputMode = OUTPUT_MODE_CURL;
-			fprintf(stderr, "Output Mode CRUL (%s) (%s)\n", s_CURLArg, s_CURLPrefix);
+			fprintf(stderr, "    Output Mode CRUL (%s) (%s)\n", s_CURLArg, s_CURLPrefix);
 			i += 2;
 		}
 		else if (strcmp(argv[i], "--null") == 0)
 		{
 			OutputMode = OUTPUT_MODE_NULL;
-			fprintf(stderr, "Output Mode NULL\n");
+			fprintf(stderr, "    Output Mode NULL\n");
+		}
+		else if (strcmp(argv[i], "--script-new") == 0)
+		{
+			s_ScriptNew = true;
+			strncpy(s_ScriptNewCmd, argv[i+1], sizeof(s_ScriptNewCmd));	
+
+			fprintf(stderr, "    Script New Hook [%s]\n", s_ScriptNewCmd);
+			i++;
 		}
 		else
 		{
@@ -728,6 +741,9 @@ int main(int argc, char* argv[])
 					RenameFile(OutputMode, FileNamePending, FileName, CurlCmd);
 				}
 
+				// run local new script 
+				if (s_ScriptNew) system(s_ScriptNewCmd);
+
 				GenerateFileName(FileNameMode, FileName, OutFileName, TS, LastSplitTS);
 				sprintf(FileNamePending, "%s.pending", FileName);
 
@@ -774,6 +790,10 @@ int main(int argc, char* argv[])
 						RenameFile(OutputMode, FileNamePending, FileName, CurlCmd);
 					}
 
+					// run local new script 
+					if (s_ScriptNew) system(s_ScriptNewCmd);
+
+
 					GenerateFileName(FileNameMode, FileName, OutFileName, SplitTS + TargetTime, SplitTS);
 					sprintf(FileNamePending, "%s.pending", FileName);
 
@@ -815,6 +835,9 @@ int main(int argc, char* argv[])
 
 		if (NewSplit)
 		{
+
+
+
 			u8 TimeStr[1024];
 			clock_date_t c	= ns2clock(TS);
 			sprintf(TimeStr, "%04i-%02i-%02i %02i:%02i:%02i", c.year, c.month, c.day, c.hour, c.min, c.sec);
