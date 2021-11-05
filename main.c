@@ -39,8 +39,10 @@
 #define FILENAME_TSTR_HHMMSS			7
 #define FILENAME_TSTR_HHMMSS_NS			8
 
+#define OUTPUT_MODE_NULL				0					// null mode for performance testing 
 #define OUTPUT_MODE_CAT					1					// cat > blah.pcap
 #define OUTPUT_MODE_RCLONE				2					// rclone rcat 
+#define OUTPUT_MODE_CURL				3					// curl 
 	
 //---------------------------------------------------------------------------------------------
 // pcap headers
@@ -128,6 +130,13 @@ static u8*		s_FMADChunkBuffer	= NULL;
 double TSC2Nano 					= 0;
 static u8 s_FileNameSuffix[4096];			// suffix to apply to output filename
 
+// args for different outputs
+
+static u8		s_CURLArg[4096] 	= { 0 };	// curl cmd line args for curl	
+static u8		s_CURLPrefix[4096] 	= { 0 };	// curl path prefix 
+
+static u8		s_PipeCmd[4096] 	= { 0 };	// allow compression and other stuff
+
 //-------------------------------------------------------------------------------------------------
 
 static void Help(void)
@@ -161,6 +170,8 @@ static void Help(void)
 	printf("\n");
 	printf("--pipe-cmd                     : introduce a pipe command before final output\n");
 	printf("--rclone                       : endpoint is an rclone endpoint\n");
+	printf("--curl <args> <prefix>         : endpoint is curl via ftp\n");
+	printf("--null                         : null performance mode\n");
 	printf("\n");
 	printf("\n");
 	printf("example: split every 100GB\n");
@@ -256,26 +267,37 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 
 //-------------------------------------------------------------------------------------------------
 // generate pipe command based on config 
-static void GeneratePipeCmd(u8* Cmd, u32 Mode, u8* PipeCmd, u8* FileName)
+static void GeneratePipeCmd(u8* Cmd, u32 Mode, u8* FileName)
 {
 	switch (Mode)
 	{
+	case OUTPUT_MODE_NULL:
+		sprintf(Cmd, "%s > /dev/null", s_PipeCmd);
+		break;
+
 	case OUTPUT_MODE_CAT:
-		sprintf(Cmd, "%s > %s", PipeCmd, FileName);
+		sprintf(Cmd, "%s > %s", s_PipeCmd, FileName);
 		break;
 
 	case OUTPUT_MODE_RCLONE:
-		sprintf(Cmd, "%s | rclone --config=/opt/fmadio/etc/rclone.conf --ignore-checksum rcat %s", PipeCmd, FileName);
+		sprintf(Cmd, "%s | rclone --config=/opt/fmadio/etc/rclone.conf --ignore-checksum rcat %s", s_PipeCmd, FileName);
+		break;
+
+	case OUTPUT_MODE_CURL:
+		sprintf(Cmd, "%s | curl -s -T - %s \"%s/%s\"", s_PipeCmd, s_CURLArg, s_CURLPrefix, FileName);
 		break;
 	}
 }
 
 //-------------------------------------------------------------------------------------------------
 // rename file 
-static void RenameFile(u32 Mode, u8* FileNamePending, u8* FileName)
+static void RenameFile(u32 Mode, u8* FileNamePending, u8* FileName, u8* CurlCmd)
 {
 	switch (Mode)
 	{
+	case OUTPUT_MODE_NULL:
+		break;
+
 	case OUTPUT_MODE_CAT:
 		rename(FileNamePending, FileName);
 		break;
@@ -288,6 +310,15 @@ static void RenameFile(u32 Mode, u8* FileNamePending, u8* FileName)
 			system(Cmd);
 		}
 		break;
+
+	case OUTPUT_MODE_CURL:
+		{
+			u8 Cmd[4096];
+			sprintf(Cmd, "curl -s -p %s \"%s\" -Q \"-RNFR %s\" -Q \"-RNTO %s\" > /dev/null", s_CURLArg, s_CURLPrefix, FileNamePending, FileName);
+			printf("Cmd [%s]\n", Cmd);
+			system(Cmd);
+		}
+		break;
 	}
 }
 
@@ -295,7 +326,7 @@ static void RenameFile(u32 Mode, u8* FileNamePending, u8* FileName)
 
 int main(int argc, char* argv[])
 {
-	char* OutFileName 	= NULL;
+	char* OutFileName 	= "";
 
 	u64 TargetByte 		= 0;
 	u64 TargetTime 		= 0;
@@ -306,8 +337,12 @@ int main(int argc, char* argv[])
 	u32 CPUID			= 0;
 
 	// default do nothing output
-	u8 PipeCmd[4096];		
-	strcpy(PipeCmd, "cat");
+	strcpy(s_PipeCmd, "cat");
+
+	// args sent to curl, e.g target IP password etc 
+	u8 CurlCmd[4096];		
+	strcpy(CurlCmd, "");
+
 
 	// default .pcap raw
 	strcpy(s_FileNameSuffix, ".pcap");
@@ -407,8 +442,8 @@ int main(int argc, char* argv[])
 		}
 		else if (strcmp(argv[i], "--pipe-cmd") == 0)
 		{
-			strncpy(PipeCmd, argv[i+1], sizeof(PipeCmd));	
-			fprintf(stderr, "pipe cmd [%s]\n", PipeCmd);
+			strncpy(s_PipeCmd, argv[i+1], sizeof(s_PipeCmd));	
+			fprintf(stderr, "pipe cmd [%s]\n", s_PipeCmd);
 			i++;
 		}
 		else if (strcmp(argv[i], "--filename-suffix") == 0)
@@ -421,6 +456,25 @@ int main(int argc, char* argv[])
 		{
 			OutputMode = OUTPUT_MODE_RCLONE;
 			fprintf(stderr, "Output Mode RClone\n");
+		}
+		else if (strcmp(argv[i], "--curl") == 0)
+		{
+			strncpy(s_CURLArg, 		argv[i+1], sizeof(CurlCmd));	
+			strncpy(s_CURLPrefix, 	argv[i+2], sizeof(CurlCmd));	
+
+			OutputMode = OUTPUT_MODE_CURL;
+			fprintf(stderr, "Output Mode CRUL (%s) (%s)\n", s_CURLArg, s_CURLPrefix);
+			i += 2;
+		}
+		else if (strcmp(argv[i], "--null") == 0)
+		{
+			OutputMode = OUTPUT_MODE_NULL;
+			fprintf(stderr, "Output Mode NULL\n");
+		}
+		else
+		{
+			fprintf(stderr, "unknown command [%s]\n", argv[i]);
+			return 0;
 		}
 	}
 
@@ -671,14 +725,14 @@ int main(int argc, char* argv[])
 					fclose(OutFile);
 
 					// rename to file name 
-					RenameFile(OutputMode, FileNamePending, FileName);
+					RenameFile(OutputMode, FileNamePending, FileName, CurlCmd);
 				}
 
 				GenerateFileName(FileNameMode, FileName, OutFileName, TS, LastSplitTS);
 				sprintf(FileNamePending, "%s.pending", FileName);
 
 				u8 Cmd[4095];
-				GeneratePipeCmd(Cmd, OutputMode, PipeCmd, FileNamePending);
+				GeneratePipeCmd(Cmd, OutputMode, FileNamePending);
 
 				printf("[%s]\n", Cmd);
 				OutFile 		= popen(Cmd, "w");
@@ -717,7 +771,7 @@ int main(int argc, char* argv[])
 						fclose(OutFile);
 
 						// rename to file name 
-						RenameFile(OutputMode, FileNamePending, FileName);
+						RenameFile(OutputMode, FileNamePending, FileName, CurlCmd);
 					}
 
 					GenerateFileName(FileNameMode, FileName, OutFileName, SplitTS + TargetTime, SplitTS);
@@ -726,7 +780,7 @@ int main(int argc, char* argv[])
 					//OutFile 		= fopen(FileNamePending, "wb");
 
 					u8 Cmd[4095];
-					GeneratePipeCmd(Cmd, OutputMode, PipeCmd, FileNamePending);
+					GeneratePipeCmd(Cmd, OutputMode, FileNamePending);
 					printf("[%s]\n", Cmd);
 					OutFile 		= popen(Cmd, "w");
 					if (!OutFile)
@@ -784,8 +838,8 @@ int main(int argc, char* argv[])
 			double dByte 	= TotalByte - LastPrintByte; 
 			double dPacket 	= TotalPkt  - LastPrintPkt; 
 			double Bps 		= (dByte * 8.0) / dT; 
-			double Pps 		= (dPacket * 8.0) / dT; 
-			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3fMpps %.3fGbps\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Pps / 1e6 ,Bps / 1e9);
+			double Pps 		= dPacket / dT; 
+			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3fGbps %.3fMpps\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Bps / 1e9, Pps / 1e6);
 			fflush(stdout);
 			fflush(stderr);
 
@@ -797,7 +851,7 @@ int main(int argc, char* argv[])
 
 	// final close and re-name
 	fclose(OutFile);
-	RenameFile(OutputMode, FileNamePending, FileName);
+	RenameFile(OutputMode, FileNamePending, FileName, CurlCmd);
 
 	printf("Complete\n");
 
