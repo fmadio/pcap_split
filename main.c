@@ -742,7 +742,11 @@ int main(int argc, char* argv[])
 				}
 
 				// run local new script 
-				if (s_ScriptNew) system(s_ScriptNewCmd);
+				if (s_ScriptNew)
+				{
+					printf("Script [%s]\n", s_ScriptNewCmd);
+					system(s_ScriptNewCmd);
+				}
 
 				GenerateFileName(FileNameMode, FileName, OutFileName, TS, LastSplitTS);
 				sprintf(FileNamePending, "%s.pending", FileName);
@@ -791,7 +795,11 @@ int main(int argc, char* argv[])
 					}
 
 					// run local new script 
-					if (s_ScriptNew) system(s_ScriptNewCmd);
+					if (s_ScriptNew)
+					{
+						printf("Script [%s]\n", s_ScriptNewCmd);
+						system(s_ScriptNewCmd);
+					}
 
 
 					GenerateFileName(FileNameMode, FileName, OutFileName, SplitTS + TargetTime, SplitTS);
