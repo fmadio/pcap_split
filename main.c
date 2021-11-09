@@ -864,9 +864,6 @@ int main(int argc, char* argv[])
 
 		if (NewSplit)
 		{
-
-
-
 			u8 TimeStr[1024];
 			clock_date_t c	= ns2clock(TS);
 			sprintf(TimeStr, "%04i-%02i-%02i %02i:%02i:%02i", c.year, c.month, c.day, c.hour, c.min, c.sec);
