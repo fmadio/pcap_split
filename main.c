@@ -133,7 +133,8 @@ static u8 s_FileNameSuffix[4096];			// suffix to apply to output filename
 // args for different outputs
 
 static u8		s_CURLArg[4096] 	= { 0 };	// curl cmd line args for curl	
-static u8		s_CURLPrefix[4096] 	= { 0 };	// curl path prefix 
+static u8		s_CURLPath[4096] 	= { 0 };	// curl uri path 
+static u8		s_CURLPrefix[4096] 	= { 0 };	// curl filename prefix 
 
 static u8		s_PipeCmd[4096] 	= { 0 };	// allow compression and other stuff
 
@@ -288,7 +289,7 @@ static void GeneratePipeCmd(u8* Cmd, u32 Mode, u8* FileName)
 		break;
 
 	case OUTPUT_MODE_CURL:
-		sprintf(Cmd, "%s | curl -s -T - %s \"%s/%s\"", s_PipeCmd, s_CURLArg, s_CURLPrefix, FileName);
+		sprintf(Cmd, "%s | curl -s -T - %s \"%s%s%s\"", s_PipeCmd, s_CURLArg, s_CURLPath, s_CURLPrefix, FileName);
 		break;
 	}
 }
@@ -318,7 +319,7 @@ static void RenameFile(u32 Mode, u8* FileNamePending, u8* FileName, u8* CurlCmd)
 	case OUTPUT_MODE_CURL:
 		{
 			u8 Cmd[4096];
-			sprintf(Cmd, "curl -s -p %s \"%s\" -Q \"-RNFR %s\" -Q \"-RNTO %s\" > /dev/null", s_CURLArg, s_CURLPrefix, FileNamePending, FileName);
+			sprintf(Cmd, "curl -s -p %s \"%s\" -Q \"-RNFR %s%s\" -Q \"-RNTO %s%s\" > /dev/null", s_CURLArg, s_CURLPath, s_CURLPrefix, FileNamePending, s_CURLPrefix, FileName);
 			printf("Cmd [%s]\n", Cmd);
 			system(Cmd);
 		}
@@ -464,11 +465,31 @@ int main(int argc, char* argv[])
 		}
 		else if (strcmp(argv[i], "--curl") == 0)
 		{
-			strncpy(s_CURLArg, 		argv[i+1], sizeof(CurlCmd));	
-			strncpy(s_CURLPrefix, 	argv[i+2], sizeof(CurlCmd));	
+			strncpy(s_CURLArg , 	argv[i+1], sizeof(s_CURLArg)	);	
+			strncpy(s_CURLPath, 	argv[i+2], sizeof(s_CURLPath)	);	
+
+			// seperate the path from the filename prefix 
+			for (int i=strlen(s_CURLPath)-1; i >= 0; i--)
+			{
+				if (s_CURLPath[i] == '/')
+				{
+					printf("copy %i %i %s\n", i, strlen(s_CURLPath), s_CURLPath ); 
+
+					int Pos = 0;
+					for (int j=i+1; j < strlen(s_CURLPath); j++)
+					{
+						s_CURLPrefix[Pos++] = s_CURLPath[j];	
+					}
+					s_CURLPrefix[Pos++] = 0;
+
+					// drop the filename prefix
+					s_CURLPath[i+1] = 0;
+					break;
+				}
+			}
 
 			OutputMode = OUTPUT_MODE_CURL;
-			fprintf(stderr, "    Output Mode CRUL (%s) (%s)\n", s_CURLArg, s_CURLPrefix);
+			fprintf(stderr, "    Output Mode CRUL (%s) (%s) (%s)\n", s_CURLArg, s_CURLPath, s_CURLPrefix);
 			i += 2;
 		}
 		else if (strcmp(argv[i], "--null") == 0)
