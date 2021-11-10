@@ -38,6 +38,7 @@
 #define FILENAME_TSTR_HHMM				6
 #define FILENAME_TSTR_HHMMSS			7
 #define FILENAME_TSTR_HHMMSS_NS			8
+#define FILENAME_TSTR_HHMMSS_SUB		9
 
 #define OUTPUT_MODE_NULL				0					// null mode for performance testing 
 #define OUTPUT_MODE_CAT					1					// cat > blah.pcap
@@ -170,6 +171,7 @@ static void Help(void)
 	printf("--filename-tstr-HHMM           : output time string filename (Hour Min)\n");
 	printf("--filename-tstr-HHMMSS         : output time string filename (Hour Min Sec)\n");
 	printf("--filename-tstr-HHMMSS_NS      : output time string filename (Hour Min Sec Nanos)\n");
+	printf("--filename-tstr-HHMMSS_SUB     : output time string filename (Hour Min Sec Subseconds)\n");
 	printf("\n");
 	printf("--filename-suffix              : filename suffix (default .pcap)\n");
 	printf("\n");
@@ -260,6 +262,22 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			nsec = nsec - usec * 1e3;
 
 			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i.%03lli.%03lli.%03lli%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec, s_FileNameSuffix); 
+		}
+		break;
+
+	case FILENAME_TSTR_HHMMSS_SUB:
+		{
+			clock_date_t c	= ns2clock(TS);
+
+			u64 nsec = TS % (u64)1e9;
+
+			u64 msec = (nsec / 1e6); 
+			nsec = nsec - msec * 1e6;
+
+			u64 usec = (nsec / 1e3); 
+			nsec = nsec - usec * 1e3;
+
+			sprintf(FileName, "%s_%04i%02i%02i_%02i-%02i-%02i.%03lli%03lli%03lli%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec, s_FileNameSuffix); 
 		}
 		break;
 
@@ -446,6 +464,11 @@ int main(int argc, char* argv[])
 			fprintf(stderr, "    Filename TimeString HHMMSS Nano\n");
 			FileNameMode	= FILENAME_TSTR_HHMMSS_NS;
 		}
+		else if (strcmp(argv[i], "--filename-tstr-HHMMSS_SUB") == 0)
+		{
+			fprintf(stderr, "    Filename TimeString HHMMSS Subseconds\n");
+			FileNameMode	= FILENAME_TSTR_HHMMSS_SUB;
+		}
 		else if (strcmp(argv[i], "--pipe-cmd") == 0)
 		{
 			strncpy(s_PipeCmd, argv[i+1], sizeof(s_PipeCmd));	
@@ -600,8 +623,10 @@ int main(int argc, char* argv[])
 
 	// split stats
 	u64 StartTS					= clock_ns();
+	u64 LastTSC					= rdtsc(); 
 	u64 TotalByte				= 0;
 	u64 TotalPkt				= 0;
+	u32 TotalSplit				= 0;
 
 	u64 SplitByte	 			= -1;	
 	FILE* OutFile 				= NULL;
@@ -864,19 +889,24 @@ int main(int argc, char* argv[])
 
 		if (NewSplit)
 		{
+			TotalSplit++;
+
 			u8 TimeStr[1024];
 			clock_date_t c	= ns2clock(TS);
 			sprintf(TimeStr, "%04i-%02i-%02i %02i:%02i:%02i", c.year, c.month, c.day, c.hour, c.min, c.sec);
 
 			double dT = (clock_ns() - StartTS) / 1e9;
 			double Bps = (TotalByte * 8.0) / dT; 
-			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3fGbps : New Split\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Bps / 1e9);
+			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3f Gbps : New Split\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Bps / 1e9);
 			fflush(stdout);
 			fflush(stderr);
 		}
 
-		if ((TotalPkt % (u64)1e6) == 0)
+		// assumein 2.5Ghz clock or so, just need some periodic printing 
+		if ((rdtsc() - LastTSC) > 2.5*1e9) 
 		{
+			LastTSC = rdtsc();
+
 			u8 TimeStr[1024];
 			clock_date_t c	= ns2clock(LastTS);
 			sprintf(TimeStr, "%04i-%02i-%02i %02i:%02i:%02i", c.year, c.month, c.day, c.hour, c.min, c.sec);
@@ -888,7 +918,7 @@ int main(int argc, char* argv[])
 			double dPacket 	= TotalPkt  - LastPrintPkt; 
 			double Bps 		= (dByte * 8.0) / dT; 
 			double Pps 		= dPacket / dT; 
-			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3fGbps %.3fMpps\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Bps / 1e9, Pps / 1e6);
+			printf("[%.3f H][%s] %s : Total Bytes %.3f GB Speed: %.3f Gbps %.3f Mpps : TotalSplit %i\n", dT / (60*60), TimeStr, FileName, TotalByte / 1e9, Bps / 1e9, Pps / 1e6, TotalSplit);
 			fflush(stdout);
 			fflush(stderr);
 
