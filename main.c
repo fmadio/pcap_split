@@ -352,7 +352,7 @@ int main(int argc, char* argv[])
 	char* OutFileName 	= "";
 
 	u64 TargetByte 		= 0;
-	u64 TargetTime 		= 0;
+	s64 TargetTime 		= 0;
 
 	u32 SplitMode		= 0;
 	u32 FileNameMode	= FILENAME_TSTR_HHMMSS;
@@ -821,13 +821,16 @@ int main(int argc, char* argv[])
 		case SPLIT_MODE_TIME:
 			{
 				s64 dTS = TS - SplitTS;
-				if (dTS > TargetTime) 
+				if (dTS > TargetTime)
 				{
 					u64 _SplitTS = SplitTS;
 
-					SplitTS = (TS / TargetTime);
+					// round up the first 1/4 of the time target
+					// as the capture processes does not split preceisely at 0.00000000000
+					// thus allow for some variance
+					SplitTS = ((TS + (TargetTime/4)) / TargetTime);
 					SplitTS *= TargetTime;
-					//fprintf(stderr, "split time: %lli\n", SplitTS);
+					//fprintf(stderr, "split time: %lli TS:%lli dTS:%lli\n", SplitTS, TS, dTS);
 
 					// create null PCAPs for anything missing 
 
