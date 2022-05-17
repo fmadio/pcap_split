@@ -37,8 +37,9 @@
 #define FILENAME_EPOCH_NSEC				5
 #define FILENAME_TSTR_HHMM				6
 #define FILENAME_TSTR_HHMMSS			7
-#define FILENAME_TSTR_HHMMSS_NS			8
-#define FILENAME_TSTR_HHMMSS_SUB		9
+#define FILENAME_TSTR_HHMMSS_TZ			8
+#define FILENAME_TSTR_HHMMSS_NS			9
+#define FILENAME_TSTR_HHMMSS_SUB		10	
 
 #define OUTPUT_MODE_NULL				0					// null mode for performance testing 
 #define OUTPUT_MODE_CAT					1					// cat > blah.pcap
@@ -170,6 +171,7 @@ static void Help(void)
 
 	printf("--filename-tstr-HHMM           : output time string filename (Hour Min)\n");
 	printf("--filename-tstr-HHMMSS         : output time string filename (Hour Min Sec)\n");
+	printf("--filename-tstr-HHMMSS-TZ      : output time string filename (Hour Min Sec) plus timezone\n");
 	printf("--filename-tstr-HHMMSS_NS      : output time string filename (Hour Min Sec Nanos)\n");
 	printf("--filename-tstr-HHMMSS_SUB     : output time string filename (Hour Min Sec Subseconds)\n");
 	printf("\n");
@@ -246,6 +248,37 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			nsec = nsec - usec * 1e3;
 
 			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, s_FileNameSuffix); 
+		}
+		break;
+
+	case FILENAME_TSTR_HHMMSS_TZ:
+		{
+ 			time_t t = time(NULL);
+			struct tm lt = {0};
+     		localtime_r(&t, &lt);
+
+			s32 Offset = lt.tm_gmtoff;
+
+			u32 TZSign = '+';
+			if (Offset < 0)
+			{
+				TZSign = '-';
+				Offset = -Offset;
+			}
+			s32 TZHour = Offset/(60*60);
+			s32 TZMin  = Offset - TZHour * 60 * 60;
+
+			clock_date_t c	= ns2clock(TS);
+
+			u64 nsec = TS % (u64)1e9;
+
+			u64 msec = (nsec / 1e6); 
+			nsec = nsec - msec * 1e6;
+
+			u64 usec = (nsec / 1e3); 
+			nsec = nsec - usec * 1e3;
+
+			sprintf(FileName, "%s_%04i-%02i-%02i_%02i:%02i:%02i%c%02i:%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, TZSign, TZHour, TZMin, s_FileNameSuffix); 
 		}
 		break;
 
@@ -459,6 +492,12 @@ int main(int argc, char* argv[])
 			fprintf(stderr, "    Filename TimeString HHMMSS\n");
 			FileNameMode	= FILENAME_TSTR_HHMMSS;
 		}
+		else if (strcmp(argv[i], "--filename-tstr-HHMMSS-TZ") == 0)
+		{
+			fprintf(stderr, "    Filename TimeString HHMMSS-TZ\n");
+			FileNameMode	= FILENAME_TSTR_HHMMSS_TZ;
+		}
+
 		else if (strcmp(argv[i], "--filename-tstr-HHMMSS_NS") == 0)
 		{
 			fprintf(stderr, "    Filename TimeString HHMMSS Nano\n");
