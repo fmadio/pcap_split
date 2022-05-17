@@ -40,6 +40,7 @@
 #define FILENAME_TSTR_HHMMSS_TZ			8
 #define FILENAME_TSTR_HHMMSS_NS			9
 #define FILENAME_TSTR_HHMMSS_SUB		10	
+#define FILENAME_STRFTIME				12	
 
 #define OUTPUT_MODE_NULL				0					// null mode for performance testing 
 #define OUTPUT_MODE_CAT					1					// cat > blah.pcap
@@ -130,7 +131,8 @@ typedef struct FMADHeader_t
 static u8*		s_FMADChunkBuffer	= NULL;
 
 double TSC2Nano 					= 0;
-static u8 s_FileNameSuffix[4096];			// suffix to apply to output filename
+static u8 		s_FileNameSuffix[4096];			// suffix to apply to output filename
+static u8		s_strftimeFormat[1024];			// strftime format
 
 // args for different outputs
 
@@ -174,6 +176,7 @@ static void Help(void)
 	printf("--filename-tstr-HHMMSS-TZ      : output time string filename (Hour Min Sec) plus timezone\n");
 	printf("--filename-tstr-HHMMSS_NS      : output time string filename (Hour Min Sec Nanos)\n");
 	printf("--filename-tstr-HHMMSS_SUB     : output time string filename (Hour Min Sec Subseconds)\n");
+	printf("--filename-strftime \"string\" : output time string to strftime printed string\n");
 	printf("\n");
 	printf("--filename-suffix              : filename suffix (default .pcap)\n");
 	printf("\n");
@@ -282,6 +285,18 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 		}
 		break;
 
+	case FILENAME_STRFTIME:
+		{
+			u8 TimeStr[1024];
+
+			time_t t0 = TS / 1e9;
+			struct tm* t = localtime(&t0);
+			strftime(TimeStr, sizeof(TimeStr), s_strftimeFormat, t);
+
+			sprintf(FileName, "%s_%s%s", BaseName, TimeStr, s_FileNameSuffix); 
+		}
+		break;
+
 	case FILENAME_TSTR_HHMMSS_NS:
 		{
 			clock_date_t c	= ns2clock(TS);
@@ -332,7 +347,7 @@ static void GeneratePipeCmd(u8* Cmd, u32 Mode, u8* FileName)
 		break;
 
 	case OUTPUT_MODE_CAT:
-		sprintf(Cmd, "%s > %s", s_PipeCmd, FileName);
+		sprintf(Cmd, "%s > '%s'", s_PipeCmd, FileName);
 		break;
 
 	case OUTPUT_MODE_RCLONE:
@@ -507,6 +522,14 @@ int main(int argc, char* argv[])
 		{
 			fprintf(stderr, "    Filename TimeString HHMMSS Subseconds\n");
 			FileNameMode	= FILENAME_TSTR_HHMMSS_SUB;
+		}
+		else if (strcmp(argv[i], "--filename-strftime") == 0)
+		{
+			FileNameMode	= FILENAME_STRFTIME;
+			strncpy(s_strftimeFormat, argv[i+1], sizeof(s_strftimeFormat));
+
+			fprintf(stderr, "    Filename TimeString (%s)\n", s_strftimeFormat);
+			i++;
 		}
 		else if (strcmp(argv[i], "--pipe-cmd") == 0)
 		{
