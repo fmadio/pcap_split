@@ -21,7 +21,9 @@
 #include <sys/mman.h>
 #include <sys/shm.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
 #include <linux/sched.h>
+#include <pwd.h>
 
 #include "fTypes.h"
 
@@ -148,6 +150,8 @@ static u8*		s_FMADChunkBuffer	= NULL;
 double TSC2Nano 					= 0;
 static u8 		s_FileNameSuffix[4096];			// suffix to apply to output filename
 static u8		s_strftimeFormat[1024];			// strftime format
+static uid_t	s_FileNameUID;					// change owner of the file
+static gid_t	s_FileNameGID;					// change owner of the file
 
 // args for different outputs
 static u8		s_CURLArg[4096] 	= { 0 };	// curl cmd line args for curl	
@@ -183,6 +187,8 @@ static void Help(void)
 
 	printf("--cpu  <cpu id>                : bind specifically to a CPU\n");
 	printf("\n");
+	printf("--ring  <lxc_ring path>        : read data from fmadio lxc ring\n");
+	printf("\n");
 	printf("-v                             : verbose output\n");
 	printf("--split-byte  <byte count>     : split by bytes\n");
 	printf("--split-time  <nanoseconds>    : split by time\n");
@@ -206,6 +212,7 @@ static void Help(void)
 	printf("--rclone                       : endpoint is an rclone endpoint\n");
 	printf("--curl <args> <prefix>         : endpoint is curl via ftp\n");
 	printf("--null                         : null performance mode\n");
+	printf("-Z <username>                  : change ownership to username\n");
 	printf("\n");
 	printf("\n");
 	printf("example: split every 100GB\n");
@@ -629,6 +636,17 @@ int main(int argc, char* argv[])
 			fprintf(stderr, "    Script New Hook [%s]\n", s_ScriptNewCmd);
 			i++;
 		}
+		else if (strcmp(argv[i], "-Z") == 0)
+		{
+			u8* UserName       = argv[i+1]; 
+
+			struct passwd *pwd 	= getpwnam(UserName);
+		    s_FileNameUID		= pwd->pw_uid;
+		    s_FileNameGID		= pwd->pw_gid;
+
+			fprintf(stderr, "UserName (%s) %i:%i\n", UserName, s_FileNameUID, s_FileNameGID); 
+			i++;
+		}
 		else
 		{
 			fprintf(stderr, "unknown command [%s]\n", argv[i]);
@@ -670,6 +688,7 @@ int main(int argc, char* argv[])
 	case FILENAME_TSTR_HHMMSS_TZ:
 	case FILENAME_TSTR_HHMMSS_NS:
 	case FILENAME_TSTR_HHMMSS_SUB:
+	case FILENAME_STRFTIME:
 		break;
 
 	default:
@@ -1001,6 +1020,13 @@ int main(int argc, char* argv[])
 
 						// rename to file name 
 						RenameFile(OutputMode, FileNamePending, FileName, CurlCmd);
+
+						// change open
+						if (s_FileNameUID)
+						{
+							fprintf(stderr, "chown\n");
+							chown(FileName, s_FileNameUID, s_FileNameGID); 
+						}
 					}
 
 					// run local new script 
@@ -1009,7 +1035,6 @@ int main(int argc, char* argv[])
 						printf("Script [%s]\n", s_ScriptNewCmd);
 						system(s_ScriptNewCmd);
 					}
-
 
 					GenerateFileName(FileNameMode, FileName, OutFileName, SplitTS + TargetTime, SplitTS);
 					sprintf(FileNamePending, "%s.pending", FileName);
