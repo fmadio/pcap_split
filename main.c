@@ -1,6 +1,6 @@
 //---------------------------------------------------------------------------------------------
 //
-// Copyright (c) 2017, fmad engineering llc 
+// Copyright (c) 2017-2022, fmad engineering llc 
 //
 // TB scale pcap splitter 
 //
