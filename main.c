@@ -25,10 +25,13 @@
 
 #include "fTypes.h"
 
-// fmadio platform
+// fmadio platform lxc_ring support
 // https://github.com/fmadio/platform 
-#include "platform/include/fmadio_packet.h"
+#ifdef FMADIO_LXCRING
 
+	#include "platform/include/fmadio_packet.h"
+
+#endif
 
 //---------------------------------------------------------------------------------------------
 
@@ -161,9 +164,9 @@ static u8		s_ScriptNewCmd[4096]	= { 0 };
 static u32		s_PacketChomp			= 0;		// chomp every packet by this bytes
 
 // lxc ring 
-static u8*					s_LXCRingPath	= NULL;	// path to the lxc ring
-static s32					s_LXCRingFD		= 0;	// file handle
-static fFMADRingHeader_t* 	s_LXCRing;				// actual lxc ring struct
+static u8*							s_LXCRingPath	= NULL;	// path to the lxc ring
+static s32							s_LXCRingFD		= 0;	// file handle
+static struct fFMADRingHeader_t* 	s_LXCRing;				// actual lxc ring struct
 
 //-------------------------------------------------------------------------------------------------
 
@@ -475,6 +478,11 @@ int main(int argc, char* argv[])
 		}
 		else if (strcmp(argv[i], "--ring") == 0)
 		{
+			#ifndef FMADIO_LXCRING
+				fprintf(stderr, "ERROR: LXC Ring support not comipled in\n");
+				assert (false);
+			#endif
+
 			s_LXCRingPath = argv[i+1];
 			fprintf(stderr, "    Input from lxc_ring:%s\n", s_LXCRingPath);
 			i++;
@@ -680,6 +688,7 @@ int main(int argc, char* argv[])
 	PCAPHeader_t HeaderMaster;
 
 	// lxc ring as input
+	#ifdef FMADIO_LXCRING
 	if (s_LXCRingPath)
 	{
 		InputMode 		= INPUT_MODE_LXCRING;
@@ -698,6 +707,7 @@ int main(int argc, char* argv[])
 		}
 	}
 	else
+	#endif
 	{
 		// read header
 		int rlen = fread(&HeaderMaster, 1, sizeof(HeaderMaster), FIn);
@@ -886,6 +896,7 @@ int main(int argc, char* argv[])
 		break;
 
 		// lxc ring input
+		#ifdef FMADIO_LXCRING
 		case INPUT_MODE_LXCRING:
 		{
 			// fetch packet from ring without blocking
@@ -904,6 +915,7 @@ int main(int argc, char* argv[])
 			//printf("got packet:%i\n", PktHeader->LengthWire);
 		}
 		break;
+		#endif
 
 		default:
 			assert(false);
