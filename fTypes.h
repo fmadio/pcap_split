@@ -288,6 +288,21 @@ static void ndelay(u64 ns)
 	}
 }
 
+static inline void sfence(void)
+{
+	__asm__ volatile("sfence");
+}
+
+static inline void mfence(void)
+{
+	__asm__ volatile("mfence");
+}
+
+static inline void lfence(void)
+{
+	__asm__ volatile("lfence");
+}
+
 static INLINE void prefetchnta(void* ptr)
 {
 	__asm__ volatile("prefetchnta (%0)" :  : "r"(ptr));

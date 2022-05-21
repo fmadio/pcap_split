@@ -25,6 +25,11 @@
 
 #include "fTypes.h"
 
+// fmadio platform
+// https://github.com/fmadio/platform 
+#include "platform/include/fmadio_packet.h"
+
+
 //---------------------------------------------------------------------------------------------
 
 #define SPLIT_MODE_BYTE					1
@@ -50,6 +55,9 @@
 //---------------------------------------------------------------------------------------------
 // pcap headers
 
+// defined in fmadio_packet.h  
+#ifndef  __FMADIO_PACKET_H__
+
 #define PCAPHEADER_MAGIC_NANO		0xa1b23c4d
 #define PCAPHEADER_MAGIC_USEC		0xa1b2c3d4
 #define PCAPHEADER_MAGIC_FMAD		0x1337bab3
@@ -65,7 +73,7 @@ typedef struct
 	u32				NSec;				// nsec fraction since epoch
 
 	u32				LengthCapture;		// captured length, inc trailing / aligned data
-	u32				Length;				// length on the wire
+	u32				LengthWire;			// length on the wire
 
 } __attribute__((packed)) PCAPPacket_t;
 
@@ -82,6 +90,9 @@ typedef struct
 	u32				Link;
 
 } __attribute__((packed)) PCAPHeader_t;
+
+#endif
+
 
 // packet header
 typedef struct FMADPacket_t
@@ -127,6 +138,7 @@ typedef struct FMADHeader_t
 #define INPUT_MODE_NULL		0
 #define INPUT_MODE_PCAP		1
 #define INPUT_MODE_FMAD		2
+#define INPUT_MODE_LXCRING	3
 
 static u8*		s_FMADChunkBuffer	= NULL;
 
@@ -135,7 +147,6 @@ static u8 		s_FileNameSuffix[4096];			// suffix to apply to output filename
 static u8		s_strftimeFormat[1024];			// strftime format
 
 // args for different outputs
-
 static u8		s_CURLArg[4096] 	= { 0 };	// curl cmd line args for curl	
 static u8		s_CURLPath[4096] 	= { 0 };	// curl uri path 
 static u8		s_CURLPrefix[4096] 	= { 0 };	// curl filename prefix 
@@ -148,6 +159,11 @@ static u8		s_ScriptNewCmd[4096]	= { 0 };
 
 // chomp every packet by x bytes. used for FCS / footer removal
 static u32		s_PacketChomp			= 0;		// chomp every packet by this bytes
+
+// lxc ring 
+static u8*					s_LXCRingPath	= NULL;	// path to the lxc ring
+static s32					s_LXCRingFD		= 0;	// file handle
+static fFMADRingHeader_t* 	s_LXCRing;				// actual lxc ring struct
 
 //-------------------------------------------------------------------------------------------------
 
@@ -457,6 +473,12 @@ int main(int argc, char* argv[])
 			i++;
 			fprintf(stderr, "    CPU ID:%i\n", CPUID);
 		}
+		else if (strcmp(argv[i], "--ring") == 0)
+		{
+			s_LXCRingPath = argv[i+1];
+			fprintf(stderr, "    Input from lxc_ring:%s\n", s_LXCRingPath);
+			i++;
+		}
 		else if (strcmp(argv[i], "--split-byte") == 0)
 		{
 			SplitMode = SPLIT_MODE_BYTE; 
@@ -650,39 +672,63 @@ int main(int argc, char* argv[])
 	FILE* FIn = stdin; 
 	assert(FIn != NULL);
 
-	// read header
-	PCAPHeader_t HeaderMaster;
-	int rlen = fread(&HeaderMaster, 1, sizeof(HeaderMaster), FIn);
-	if (rlen != sizeof(HeaderMaster))
-	{
-		printf("Failed to read pcap header\n");
-		return 0;
-	}
-
 	// work out the input file format
 	bool InputMode 		= INPUT_MODE_NULL;
-
 	u64 TScale 			= 0;
-	switch (HeaderMaster.Magic)
+
+	// master pcap header for output
+	PCAPHeader_t HeaderMaster;
+
+	// lxc ring as input
+	if (s_LXCRingPath)
 	{
-	case PCAPHEADER_MAGIC_NANO: 
-		printf("PCAP Nano\n"); 
-		TScale 			= 1;    
-		InputMode		= INPUT_MODE_PCAP;
-		break;
+		InputMode 		= INPUT_MODE_LXCRING;
+		TScale 			= 1;
 
-	case PCAPHEADER_MAGIC_USEC: 
-		printf("PCAP Micro\n"); 
-		TScale 			= 1000; 
-		InputMode		= INPUT_MODE_PCAP;
-		break;
+		// open ring
+		int ret = FMADPacket_OpenRx(&s_LXCRingFD,
+									&s_LXCRing,
+									0,
+									s_LXCRingPath
+								   );
+		if (ret < 0)
+		{
+			fprintf(stderr, "failed to open lxc ring [%s]\n", s_LXCRingPath);
+			return 0;
+		}
+	}
+	else
+	{
+		// read header
+		int rlen = fread(&HeaderMaster, 1, sizeof(HeaderMaster), FIn);
+		if (rlen != sizeof(HeaderMaster))
+		{
+			printf("Failed to read pcap header\n");
+			return 0;
+		}
 
-	case PCAPHEADER_MAGIC_FMAD: 
-		fprintf(stderr, "FMAD Format Chunked\n");
-		TScale 			= 1; 
-		InputMode		= INPUT_MODE_FMAD;
+		// what kind of pcap
+		switch (HeaderMaster.Magic)
+		{
+		case PCAPHEADER_MAGIC_NANO: 
+			printf("PCAP Nano\n"); 
+			TScale 			= 1;    
+			InputMode		= INPUT_MODE_PCAP;
+			break;
 
-		break;
+		case PCAPHEADER_MAGIC_USEC: 
+			printf("PCAP Micro\n"); 
+			TScale 			= 1000; 
+			InputMode		= INPUT_MODE_PCAP;
+			break;
+
+		case PCAPHEADER_MAGIC_FMAD: 
+			fprintf(stderr, "FMAD Format Chunked\n");
+			TScale 			= 1; 
+			InputMode		= INPUT_MODE_FMAD;
+
+			break;
+		}
 	}
 
 	// force it to nsec pacp
@@ -743,6 +789,7 @@ int main(int argc, char* argv[])
 	bool IsExit = false;
 	while (!IsExit)
 	{
+		u64 PCAPTS;
 		switch (InputMode)
 		{
 		// standard pcap mode
@@ -773,6 +820,9 @@ int main(int argc, char* argv[])
 				IsExit = true;
 				break;
 			}
+
+			// pcap timestamp
+			PCAPTS = (u64)PktHeader->Sec * ((u64)1e9) + (u64)PktHeader->NSec * TScale;
 		}
 		break;
 
@@ -802,7 +852,7 @@ int main(int argc, char* argv[])
 				assert(Header.Length < 1024*1024);
 				assert(Header.PktCnt < 1e6);
 
-				rlen = fread(FMADChunkBuffer, 1, Header.Length, FIn);
+				int rlen = fread(FMADChunkBuffer, 1, Header.Length, FIn);
 				if (rlen != Header.Length)
 				{
 					fprintf(stderr, "FMADHeader payload read fail: %i %i : %i\n", rlen, Header.Length, errno, strerror(errno));
@@ -819,7 +869,7 @@ int main(int argc, char* argv[])
 			// FMAD to PCAP packet
 			FMADPacket_t* FMADPacket = (FMADPacket_t*)(FMADChunkBuffer + FMADChunkBufferPos);
 
-			PktHeader->Length			= FMADPacket->LengthWire;	
+			PktHeader->LengthWire		= FMADPacket->LengthWire;	
 			PktHeader->LengthCapture	= FMADPacket->LengthCapture;	
 			PktHeader->Sec				= FMADPacket->TS / (u64)1e9;	
 			PktHeader->NSec				= FMADPacket->TS % (u64)1e9;	
@@ -829,6 +879,29 @@ int main(int argc, char* argv[])
 
 			FMADChunkPktCnt++;
 			FMADChunkBufferPos += sizeof(FMADPacket_t) + FMADPacket->LengthCapture;
+
+			// pcap timestamp
+			PCAPTS = (u64)PktHeader->Sec * ((u64)1e9) + (u64)PktHeader->NSec * TScale;
+		}
+		break;
+
+		// lxc ring input
+		case INPUT_MODE_LXCRING:
+		{
+			// fetch packet from ring without blocking
+			int ret = FMADPacket_RecvV1(s_LXCRing, 
+										true, 
+										&PCAPTS, 
+										&PktHeader->LengthWire, 
+										&PktHeader->LengthCapture, 
+										NULL, 
+										PktHeader + 1);
+			if (ret < 0)
+			{
+				IsExit = true;
+				break;
+			}
+			//printf("got packet:%i\n", PktHeader->LengthWire);
 		}
 		break;
 
@@ -836,11 +909,13 @@ int main(int argc, char* argv[])
 			assert(false);
 			break;
 		}
-		// 64b epoch 
-		u64 TS = (u64)PktHeader->Sec * ((u64)1e9) + (u64)PktHeader->NSec * TScale;
+
+		//no/invalid data so break here
+		if (IsExit) break;
+
 
 		// set the first time
-		if (LastSplitTS == 0) LastSplitTS = TS;
+		if (LastSplitTS == 0) LastSplitTS = PCAPTS;
 
 		// split mode
 		bool NewSplit = false;
@@ -867,7 +942,7 @@ int main(int argc, char* argv[])
 					system(s_ScriptNewCmd);
 				}
 
-				GenerateFileName(FileNameMode, FileName, OutFileName, TS, LastSplitTS);
+				GenerateFileName(FileNameMode, FileName, OutFileName, PCAPTS, LastSplitTS);
 				sprintf(FileNamePending, "%s.pending", FileName);
 
 				u8 Cmd[4095];
@@ -884,7 +959,7 @@ int main(int argc, char* argv[])
 				fwrite(&HeaderMaster, 1, sizeof(HeaderMaster), OutFile);	
 				fflush(OutFile);
 
-				LastSplitTS	= TS;
+				LastSplitTS	= PCAPTS;
 
 				SplitByte 	= 0;
 				NewSplit 	= true;
@@ -893,7 +968,7 @@ int main(int argc, char* argv[])
 
 		case SPLIT_MODE_TIME:
 			{
-				s64 dTS = TS - SplitTS;
+				s64 dTS = PCAPTS - SplitTS;
 				if (dTS > TargetTime)
 				{
 					u64 _SplitTS = SplitTS;
@@ -901,7 +976,7 @@ int main(int argc, char* argv[])
 					// round up the first 1/4 of the time target
 					// as the capture processes does not split preceisely at 0.00000000000
 					// thus allow for some variance
-					SplitTS = ((TS + (TargetTime/4)) / TargetTime);
+					SplitTS = ((PCAPTS + (TargetTime/4)) / TargetTime);
 					SplitTS *= TargetTime;
 					//fprintf(stderr, "split time: %lli TS:%lli dTS:%lli\n", SplitTS, TS, dTS);
 
@@ -950,7 +1025,7 @@ int main(int argc, char* argv[])
 		}
 
 		// optionally chomp packets before outputing
-		PktHeader->Length			-= s_PacketChomp; 
+		PktHeader->LengthWire		-= s_PacketChomp; 
 		PktHeader->LengthCapture	-= s_PacketChomp; 
 
 		// write output
@@ -961,7 +1036,7 @@ int main(int argc, char* argv[])
 			break;
 		}
 
-		LastTS = TS;
+		LastTS = PCAPTS;
 
 		SplitByte += sizeof(PCAPPacket_t) + PktHeader->LengthCapture;
 		TotalByte += sizeof(PCAPPacket_t) + PktHeader->LengthCapture;
@@ -972,7 +1047,7 @@ int main(int argc, char* argv[])
 			TotalSplit++;
 
 			u8 TimeStr[1024];
-			clock_date_t c	= ns2clock(TS);
+			clock_date_t c	= ns2clock(PCAPTS);
 			sprintf(TimeStr, "%04i-%02i-%02i %02i:%02i:%02i", c.year, c.month, c.day, c.hour, c.min, c.sec);
 
 			double dT = (clock_ns() - StartTS) / 1e9;
@@ -982,7 +1057,7 @@ int main(int argc, char* argv[])
 			fflush(stderr);
 		}
 
-		// assumein 2.5Ghz clock or so, just need some periodic printing 
+		// assumein ~2.5Ghz clock or so, just need some periodic printing 
 		if ((rdtsc() - LastTSC) > 2.5*1e9) 
 		{
 			LastTSC = rdtsc();

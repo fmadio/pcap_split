@@ -6,6 +6,7 @@ DEF += -O2
 DEF += --std=c99 
 DEF += -D_LARGEFILE64_SOURCE 
 DEF += -D_GNU_SOURCE 
+DEF += -I/mnt/store0/git/
 
 LIBS =
 LIBS += -lm -lpthread
