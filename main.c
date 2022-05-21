@@ -173,7 +173,7 @@ static void Help(void)
 
 	printf("--filename-tstr-HHMM           : output time string filename (Hour Min)\n");
 	printf("--filename-tstr-HHMMSS         : output time string filename (Hour Min Sec)\n");
-	printf("--filename-tstr-HHMMSS-TZ      : output time string filename (Hour Min Sec) plus timezone\n");
+	printf("--filename-tstr-HHMMSS_TZ      : output time string filename (Hour Min Sec) plus timezone\n");
 	printf("--filename-tstr-HHMMSS_NS      : output time string filename (Hour Min Sec Nanos)\n");
 	printf("--filename-tstr-HHMMSS_SUB     : output time string filename (Hour Min Sec Subseconds)\n");
 	printf("--filename-strftime \"string\" : output time string to strftime printed string\n");
@@ -507,9 +507,9 @@ int main(int argc, char* argv[])
 			fprintf(stderr, "    Filename TimeString HHMMSS\n");
 			FileNameMode	= FILENAME_TSTR_HHMMSS;
 		}
-		else if (strcmp(argv[i], "--filename-tstr-HHMMSS-TZ") == 0)
+		else if (strcmp(argv[i], "--filename-tstr-HHMMSS_TZ") == 0)
 		{
-			fprintf(stderr, "    Filename TimeString HHMMSS-TZ\n");
+			fprintf(stderr, "    Filename TimeString HHMMSS_TZ\n");
 			FileNameMode	= FILENAME_TSTR_HHMMSS_TZ;
 		}
 
@@ -614,7 +614,7 @@ int main(int argc, char* argv[])
 		break;
 
 	default:
-		fprintf(stderr, "invalid config\n");
+		fprintf(stderr, "invalid config. no split type time/bytes specified\n");
 		Help();
 		return 0;
 	}
@@ -628,7 +628,9 @@ int main(int argc, char* argv[])
 	case FILENAME_EPOCH_NSEC:
 	case FILENAME_TSTR_HHMM:
 	case FILENAME_TSTR_HHMMSS:
+	case FILENAME_TSTR_HHMMSS_TZ:
 	case FILENAME_TSTR_HHMMSS_NS:
+	case FILENAME_TSTR_HHMMSS_SUB:
 		break;
 
 	default:
