@@ -146,6 +146,9 @@ static u8		s_PipeCmd[4096] 	= { 0 };	// allow compression and other stuff
 static bool		s_ScriptNew				= false;	// run this script before every filefile 
 static u8		s_ScriptNewCmd[4096]	= { 0 };
 
+// chomp every packet by x bytes. used for FCS / footer removal
+static u32		s_PacketChomp			= 0;		// chomp every packet by this bytes
+
 //-------------------------------------------------------------------------------------------------
 
 static void Help(void)
@@ -471,6 +474,12 @@ int main(int argc, char* argv[])
 			i++;
 
 			fprintf(stderr, "    Split Every %lli Sec\n", TargetTime / 1e9);
+		}
+		else if (strcmp(argv[i], "--packet-chomp") == 0)
+		{
+			s_PacketChomp = atof(argv[i+1]);
+			i++;
+			fprintf(stderr, "    chomp every packet by %i bytes\n", s_PacketChomp);
 		}
 		else if (strcmp(argv[i], "--filename-epoch-sec") == 0)
 		{
@@ -827,7 +836,7 @@ int main(int argc, char* argv[])
 			assert(false);
 			break;
 		}
-
+		// 64b epoch 
 		u64 TS = (u64)PktHeader->Sec * ((u64)1e9) + (u64)PktHeader->NSec * TScale;
 
 		// set the first time
@@ -939,6 +948,10 @@ int main(int argc, char* argv[])
 			}
 			break;
 		}
+
+		// optionally chomp packets before outputing
+		PktHeader->Length			-= s_PacketChomp; 
+		PktHeader->LengthCapture	-= s_PacketChomp; 
 
 		// write output
 		int wlen = fwrite(Pkt, 1, sizeof(PCAPPacket_t) + PktHeader->LengthCapture, OutFile);
