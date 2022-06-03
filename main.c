@@ -1061,23 +1061,27 @@ int main(int argc, char* argv[])
 			break;
 		}
 
-		// optionally chomp packets before outputing
-		PktHeader->LengthWire		-= s_PacketChomp; 
-		PktHeader->LengthCapture	-= s_PacketChomp; 
-
-		// write output
-		int wlen = fwrite(Pkt, 1, sizeof(PCAPPacket_t) + PktHeader->LengthCapture, OutFile);
-		if (wlen != sizeof(PCAPPacket_t) + PktHeader->LengthCapture)
+		//if its a valid packet (e.g dont write NOP packets to disk)
+		if (PktHeader->LengthWire > 0)
 		{
-			printf("write failure. possibly out of disk space\n");
-			break;
-		}
+			// optionally chomp packets before outputing
+			PktHeader->LengthWire		-= s_PacketChomp; 
+			PktHeader->LengthCapture	-= s_PacketChomp; 
 
+			// write output
+			int wlen = fwrite(Pkt, 1, sizeof(PCAPPacket_t) + PktHeader->LengthCapture, OutFile);
+			if (wlen != sizeof(PCAPPacket_t) + PktHeader->LengthCapture)
+			{
+				printf("write failure. possibly out of disk space\n");
+				break;
+			}
+
+			SplitByte += sizeof(PCAPPacket_t) + PktHeader->LengthCapture;
+			TotalByte += sizeof(PCAPPacket_t) + PktHeader->LengthCapture;
+			TotalPkt  += 1; 
+		}	
+		// use the NOP packets to update the timestamp
 		LastTS = PCAPTS;
-
-		SplitByte += sizeof(PCAPPacket_t) + PktHeader->LengthCapture;
-		TotalByte += sizeof(PCAPPacket_t) + PktHeader->LengthCapture;
-		TotalPkt  += 1; 
 
 		if (NewSplit)
 		{
