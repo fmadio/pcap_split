@@ -932,6 +932,10 @@ int main(int argc, char* argv[])
 				break;
 			}
 			//printf("got packet:%i\n", PktHeader->LengthWire);
+
+			//set packet header
+			PktHeader->Sec		= PCAPTS / (u64)1e9;	
+			PktHeader->NSec		= PCAPTS % (u64)1e9;	
 		}
 		break;
 		#endif
