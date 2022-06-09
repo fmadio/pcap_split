@@ -56,6 +56,8 @@
 #define OUTPUT_MODE_CAT					1					// cat > blah.pcap
 #define OUTPUT_MODE_RCLONE				2					// rclone rcat 
 #define OUTPUT_MODE_CURL				3					// curl 
+
+volatile bool g_SignalExit			= 0;					// signal handlered requesting exit		
 	
 //---------------------------------------------------------------------------------------------
 // pcap headers
@@ -226,6 +228,47 @@ static void Help(void)
 	printf("$ gzip -d -c my_big_capture.pcap.gz | pcap_split -o my_big_capture_ --split-byte 100e9\n");
 	printf("\n");
 }
+
+//-------------------------------------------------------------------------------
+
+static void lsignal (int i, siginfo_t* si, void* context)
+{
+	fprintf(stderr, "signal received SIG:%i : %p\n", i, context);
+
+	fprintf(stderr, "   si_signo  : %4i %08x\n", si->si_signo, si->si_signo);
+	fprintf(stderr, "   si_errno  : %4i %08x\n", si->si_errno, si->si_errno);
+	fprintf(stderr, "   si_code   : %4i %08x\n", si->si_code,  si->si_code);
+	//fprintf(stderr, "   si_trapno : %i\n", si->si_trapno);
+
+	switch (i)
+	{
+	case SIGTRAP:
+	case SIGSEGV:
+	case SIGBUS:
+		fprintf(stderr, "    Bus error: 0x%016llx\n", si->si_addr);
+		break;
+
+	case SIGTERM:
+	case SIGINT:
+		fprintf(stderr, "    kill\n");
+		break;
+
+	default:
+		fprintf(stderr, "    undef signal\n"); 
+		break;
+	}
+	fflush(stderr);
+
+	signal(i, SIG_DFL); /* if another SIGINT happens before lstop, terminate process (default action) */
+
+	// get execution context
+	//mcontext_t* mcontext = &((ucontext_t*)context)->uc_mcontext;
+	//fprintf(stderr, "   EPI: %016llx\n", mcontext->gregs[REG_RIP]);
+
+	// signal related threads to exit
+	g_SignalExit = 1;
+}
+
 
 //-------------------------------------------------------------------------------------------------
 // various different naming formats 
@@ -663,6 +706,22 @@ int main(int argc, char* argv[])
 		pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &MainCPUS);
 	}
 
+	// setup signal hanlders
+	struct sigaction handler;
+	memset(&handler, 0, sizeof(handler));
+  	handler.sa_sigaction = lsignal;
+    sigemptyset (&handler.sa_mask);
+	handler.sa_flags = SA_SIGINFO;
+
+	sigaction (SIGINT, 	&handler, NULL);
+	sigaction (SIGTERM, &handler, NULL);
+	sigaction (SIGKILL, &handler, NULL);
+	sigaction (SIGHUP, 	&handler, NULL);
+	sigaction (SIGBUS, 	&handler, NULL);
+	sigaction (SIGSEGV, &handler, NULL);
+
+
+
 	// check for valid config
 	switch (SplitMode)
 	{
@@ -816,7 +875,7 @@ int main(int argc, char* argv[])
 	u64 LastPrintPkt 		= 0;
 
 	bool IsExit = false;
-	while (!IsExit)
+	while ((!IsExit) || g_SignalExit)
 	{
 		u64 PCAPTS;
 		switch (InputMode)
