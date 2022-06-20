@@ -1,6 +1,9 @@
 # pcap_split 
 
-![Alt text](http://fmad.io/analytics/logo_capmerge.png "fmadio flow analyzer logo")
+![Alt text](http://firmware.fmad.io/images/logo_capmerge.png "fmadio flow analyzer logo")
+
+[FMADIO 10G 40G 100G 400G Packet Capture](https://fmad.io)
+
 
 pcap_split is a high performance TB scale pcap split utilitiy. It operats using STDIN so you can pipe data ad needed
 
