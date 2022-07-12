@@ -1215,8 +1215,11 @@ int main(int argc, char* argv[])
 	}
 
 	// final close and re-name
-	fclose(OutFile);
-	RenameFile(OutputMode, FileNamePending, FileName, CurlCmd);
+	if (OutFile)
+	{
+		fclose(OutFile);
+		RenameFile(OutputMode, FileNamePending, FileName, CurlCmd);
+	}
 
 	printf("Complete\n");
 
