@@ -272,26 +272,38 @@ static void lsignal (int i, siginfo_t* si, void* context)
 
 //-------------------------------------------------------------------------------------------------
 // various different naming formats 
-static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 TSLast)
+static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 TSLast, bool IsFirstSplit)
 {
 	switch (Mode)
 	{
 	case FILENAME_EPOCH_SEC:
-		sprintf(FileName, "%s%lli%s", BaseName, (u64)(TS / 1e9), s_FileNameSuffix); 
+		{
+			if (IsFirstSplit) TS += 1e9; 
+			sprintf(FileName, "%s%lli%s", BaseName, (u64)(TS / 1e9), s_FileNameSuffix); 
+		}
 		break;
 	case FILENAME_EPOCH_SEC_STARTEND:
-		sprintf(FileName, "%s%lli-%lli%s", BaseName, (u64)(TSLast / 1e9), (u64)(TS / 1e9), s_FileNameSuffix); 
+		{
+			if (IsFirstSplit) TS += 1e9; 
+			sprintf(FileName, "%s%lli-%lli%s", BaseName, (u64)(TS / 1e9), (u64)(TSLast / 1e9), s_FileNameSuffix); 
+		}
 		break;
 	case FILENAME_EPOCH_MSEC:
-		sprintf(FileName, "%s%lli%s", BaseName, (u64)(TS/1e6), s_FileNameSuffix);
+		{
+			sprintf(FileName, "%s%lli%s", BaseName, (u64)(TS/1e6), s_FileNameSuffix);
+		}
 		break;
 
 	case FILENAME_EPOCH_USEC:
-		sprintf(FileName, "%s%lli%s", BaseName, (u64)(TS/1e3), s_FileNameSuffix);
+		{
+			sprintf(FileName, "%s%lli%s", BaseName, (u64)(TS/1e3), s_FileNameSuffix);
+		}
 		break;
 
 	case FILENAME_EPOCH_NSEC:
+		{
 		sprintf(FileName, "%s%lli%s", BaseName, TS, s_FileNameSuffix);
+		}
 		break;
 
 	case FILENAME_TSTR_HHMM:
@@ -306,6 +318,9 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
+			// bump split by 1min as it cross midnight 
+			if (IsFirstSplit) c.min += 1;
+
 			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, s_FileNameSuffix);
 		}
 		break;
@@ -314,13 +329,9 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 		{
 			clock_date_t c	= ns2clock(TS);
 
-			u64 nsec = TS % (u64)1e9;
-
-			u64 msec = (nsec / 1e6); 
-			nsec = nsec - msec * 1e6;
-
-			u64 usec = (nsec / 1e3); 
-			nsec = nsec - usec * 1e3;
+			//first split bump the sec by 1 to avoid overwrites
+			// 1sec granuality isnt enough to as the capture rolls across midnight
+			if (IsFirstSplit) c.sec += 1;
 
 			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, s_FileNameSuffix); 
 		}
@@ -352,6 +363,10 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
+
+			//first split bump the sec by 1 to avoid overwrites
+			// 1sec granuality isnt enough to as the capture rolls across midnight
+			if (IsFirstSplit) c.sec += 1;
 
 			sprintf(FileName, "%s_%04i-%02i-%02i_%02i:%02i:%02i%c%02i:%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, TZSign, TZHour, TZMin, s_FileNameSuffix); 
 		}
@@ -840,7 +855,6 @@ int main(int argc, char* argv[])
 
 	u64 LastTS					= 0;
 	u64 SplitTS					= 0;
-	u64 LastSplitTS				= 0;
 
 	u8* 			Pkt			= malloc(1024*1024);	
 	PCAPPacket_t*	PktHeader	= (PCAPPacket_t*)Pkt;
@@ -1006,10 +1020,19 @@ int main(int argc, char* argv[])
 
 		//no/invalid data so break here
 		if (IsExit) break;
-
-
+/*
 		// set the first time
-		if (LastSplitTS == 0) LastSplitTS = PCAPTS;
+		if (SplitTS == 0)
+		{
+			SplitTS = PCAPTS;
+
+			// if its split by time them boundary align it
+			SplitTS = PCAPTS / TargetTime;
+			SplitTS *= TargetTime;
+
+			fprintf(stdout, "inital split %lli %lli\n", PCAPTS, SplitTS);
+		}
+*/
 
 		// split mode
 		bool NewSplit = false;
@@ -1036,7 +1059,7 @@ int main(int argc, char* argv[])
 					system(s_ScriptNewCmd);
 				}
 
-				GenerateFileName(FileNameMode, FileName, OutFileName, PCAPTS, LastSplitTS);
+				GenerateFileName(FileNameMode, FileName, OutFileName, PCAPTS, SplitTS, false);
 				sprintf(FileNamePending, "%s.pending", FileName);
 
 				u8 Cmd[4095];
@@ -1053,7 +1076,7 @@ int main(int argc, char* argv[])
 				fwrite(&HeaderMaster, 1, sizeof(HeaderMaster), OutFile);	
 				fflush(OutFile);
 
-				LastSplitTS	= PCAPTS;
+				SplitTS		= PCAPTS;
 
 				SplitByte 	= 0;
 				NewSplit 	= true;
@@ -1065,14 +1088,14 @@ int main(int argc, char* argv[])
 				s64 dTS = PCAPTS - SplitTS;
 				if (dTS > TargetTime)
 				{
-					u64 _SplitTS = SplitTS;
+					// is it the first split
+					bool IsFirstSplit = (SplitTS == 0);
 
 					// round up the first 1/4 of the time target
 					// as the capture processes does not split preceisely at 0.00000000000
 					// thus allow for some variance
 					SplitTS = ((PCAPTS + (TargetTime/4)) / TargetTime);
 					SplitTS *= TargetTime;
-					//fprintf(stderr, "split time: %lli TS:%lli dTS:%lli\n", SplitTS, TS, dTS);
 
 					// create null PCAPs for anything missing 
 
@@ -1099,11 +1122,15 @@ int main(int argc, char* argv[])
 						system(s_ScriptNewCmd);
 					}
 
-					GenerateFileName(FileNameMode, FileName, OutFileName, SplitTS + TargetTime, SplitTS);
+					// generate filename for output
+
+					u64 SplitTSStart 	= SplitTS;
+					u64 SplitTSStop		= SplitTS+TargetTime;
+
+					GenerateFileName(FileNameMode, FileName, OutFileName, SplitTSStart, SplitTSStop, IsFirstSplit);
 					sprintf(FileNamePending, "%s.pending", FileName);
 
-					//OutFile 		= fopen(FileNamePending, "wb");
-
+					// generate pipe
 					u8 Cmd[4095];
 					GeneratePipeCmd(Cmd, OutputMode, FileNamePending);
 					printf("[%s]\n", Cmd);
@@ -1113,9 +1140,9 @@ int main(int argc, char* argv[])
 						printf("OutputFilename is invalid [%s]\n", FileName);
 						break;	
 					}	
-					fwrite(&HeaderMaster, 1, sizeof(HeaderMaster), OutFile);	
 
-					LastSplitTS	= _SplitTS;
+					//write pcap header
+					fwrite(&HeaderMaster, 1, sizeof(HeaderMaster), OutFile);	
 
 					SplitByte 	= 0;
 					NewSplit 	= true;

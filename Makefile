@@ -6,10 +6,11 @@ DEF += -O2
 DEF += --std=c99 
 DEF += -D_LARGEFILE64_SOURCE 
 DEF += -D_GNU_SOURCE 
-DEF += -I/opt/fmadio
+#DEF += -I/opt/fmadio
+DEF += -I/mnt/store0/git/
 
 # enable lxc ring support
-#DEF += -DFMADIO_LXCRING
+DEF += -DFMADIO_LXCRING
 
 LIBS =
 LIBS += -lm -lpthread
