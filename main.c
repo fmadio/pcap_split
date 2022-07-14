@@ -177,7 +177,9 @@ static struct fFMADRingHeader_t* 	s_LXCRing;				// actual lxc ring struct
 // roll period
 static bool		s_RollPeriodSetup			= true;		// has the roll period been setup? only enabled if --roll-period is set
 static s64		s_RollPeriod				= 0;		// advise what the roll period is
-static s64		s_RollTS					= 0;		// calculate what the start of the roll is in epoch 
+static s64		s_RollLocalTS				= 0;		// calculate what the start of the roll is in epoch 
+
+static s64		s_TZOffset					= 0;		// offset to local time
 
 //-------------------------------------------------------------------------------------------------
 
@@ -720,6 +722,7 @@ int main(int argc, char* argv[])
 		pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &MainCPUS);
 	}
 
+
 	// setup signal hanlders
 	struct sigaction handler;
 	memset(&handler, 0, sizeof(handler));
@@ -734,7 +737,16 @@ int main(int argc, char* argv[])
 	sigaction (SIGBUS, 	&handler, NULL);
 	sigaction (SIGSEGV, &handler, NULL);
 
+	
+	// get the local timezone offset
+	// as pcap timestamps are always epoch
+  	time_t t = time(NULL);
+ 	struct tm lt = {0};
 
+	localtime_r(&t, &lt);
+
+	s_TZOffset = (s64)lt.tm_gmtoff * 1e9;
+	printf("Offset to GMT is %lli (%s)\n", s_TZOffset, lt.tm_zone);
 
 	// check for valid config
 	switch (SplitMode)
@@ -1026,15 +1038,17 @@ int main(int argc, char* argv[])
 			s_RollPeriodSetup = true;
 
 			// calcuclate pct within the roll the packet is
-			s64 PktRollModulo = PCAPTS %  s_RollPeriod;
-			float Pct = PktRollModulo / (float)s_RollPeriod;
-			printf("roll period setup:%.3fmin  Nano Modulo:%lli Pct%:%.3f FirstPkt:%s\n", s_RollPeriod/60e9, PktRollModulo, Pct, FormatTS(PCAPTS));
+			//s64 PktRollModulo = PCAPTS %  s_RollPeriod;
+			//float Pct = PktRollModulo / (float)s_RollPeriod;
+			//printf("roll period setup:%.3fmin  Nano Modulo:%lli Pct%:%.3f FirstPkt:%s\n", s_RollPeriod/60e9, PktRollModulo, Pct, FormatTS(PCAPTS));
 
 			// calculat the next roll time. by adding 10% of the roll period (if pkts are slightly before roll time)
 			// to the packet time and rounding up
-			s_RollTS = (PCAPTS + 0.10 * s_RollPeriod) / s_RollPeriod;
-			s_RollTS += 1; 
-			s_RollTS *= s_RollPeriod; 
+			s_RollLocalTS = (PCAPTS + 0.10 * s_RollPeriod + s_TZOffset) / s_RollPeriod;
+			s_RollLocalTS += 1; 
+			s_RollLocalTS *= s_RollPeriod; 
+
+			printf("RollTime: %lli %s\n", s_RollLocalTS, FormatTS(s_RollLocalTS));
 		}
 
 		// split mode
@@ -1091,10 +1105,10 @@ int main(int argc, char* argv[])
 				bool IsNoSplit = false;
 
 				//if it has a roll position
-				if (s_RollTS != 0)
+				if (s_RollLocalTS != 0)
 				{
 					// position wrt to split time
-					float Pct = (s_RollTS - PCAPTS) / (float)s_RollPeriod;
+					float Pct = (s_RollLocalTS - (PCAPTS + s_TZOffset)) / (float)s_RollPeriod;
 
 					// overflow into the next split
 					if (Pct <= 0.0)
