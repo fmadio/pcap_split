@@ -174,6 +174,11 @@ static u8*							s_LXCRingPath	= NULL;	// path to the lxc ring
 static s32							s_LXCRingFD		= 0;	// file handle
 static struct fFMADRingHeader_t* 	s_LXCRing;				// actual lxc ring struct
 
+// roll period
+static bool		s_RollPeriodSetup			= true;		// has the roll period been setup? only enabled if --roll-period is set
+static s64		s_RollPeriod				= 0;		// advise what the roll period is
+static s64		s_RollTS					= 0;		// calculate what the start of the roll is in epoch 
+
 //-------------------------------------------------------------------------------------------------
 
 static void Help(void)
@@ -272,19 +277,17 @@ static void lsignal (int i, siginfo_t* si, void* context)
 
 //-------------------------------------------------------------------------------------------------
 // various different naming formats 
-static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 TSLast, bool IsFirstSplit)
+static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 TSLast)
 {
 	switch (Mode)
 	{
 	case FILENAME_EPOCH_SEC:
 		{
-			if (IsFirstSplit) TS += 1e9; 
 			sprintf(FileName, "%s%lli%s", BaseName, (u64)(TS / 1e9), s_FileNameSuffix); 
 		}
 		break;
 	case FILENAME_EPOCH_SEC_STARTEND:
 		{
-			if (IsFirstSplit) TS += 1e9; 
 			sprintf(FileName, "%s%lli-%lli%s", BaseName, (u64)(TS / 1e9), (u64)(TSLast / 1e9), s_FileNameSuffix); 
 		}
 		break;
@@ -318,9 +321,6 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			// bump split by 1min as it cross midnight 
-			if (IsFirstSplit) c.min += 1;
-
 			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, s_FileNameSuffix);
 		}
 		break;
@@ -328,10 +328,6 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 	case FILENAME_TSTR_HHMMSS:
 		{
 			clock_date_t c	= ns2clock(TS);
-
-			//first split bump the sec by 1 to avoid overwrites
-			// 1sec granuality isnt enough to as the capture rolls across midnight
-			if (IsFirstSplit) c.sec += 1;
 
 			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, s_FileNameSuffix); 
 		}
@@ -363,10 +359,6 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
-
-			//first split bump the sec by 1 to avoid overwrites
-			// 1sec granuality isnt enough to as the capture rolls across midnight
-			if (IsFirstSplit) c.sec += 1;
 
 			sprintf(FileName, "%s_%04i-%02i-%02i_%02i:%02i:%02i%c%02i:%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, TZSign, TZHour, TZMin, s_FileNameSuffix); 
 		}
@@ -575,6 +567,13 @@ int main(int argc, char* argv[])
 			s_PacketChomp = atof(argv[i+1]);
 			i++;
 			fprintf(stderr, "    chomp every packet by %i bytes\n", s_PacketChomp);
+		}
+		else if (strcmp(argv[i], "--roll-period") == 0)
+		{
+			s_RollPeriodSetup = false;
+			s_RollPeriod = atof(argv[i+1]);
+			i++;
+			fprintf(stderr, "    Roll Period %.3f hours\n", s_RollPeriod/(60*60*1e9) );
 		}
 		else if (strcmp(argv[i], "--filename-epoch-sec") == 0)
 		{
@@ -891,7 +890,7 @@ int main(int argc, char* argv[])
 	bool IsExit = false;
 	while ((!IsExit) || g_SignalExit)
 	{
-		u64 PCAPTS;
+		s64 PCAPTS;
 		switch (InputMode)
 		{
 		// standard pcap mode
@@ -1020,19 +1019,23 @@ int main(int argc, char* argv[])
 
 		//no/invalid data so break here
 		if (IsExit) break;
-/*
-		// set the first time
-		if (SplitTS == 0)
+
+		// init the roll period
+		if (!s_RollPeriodSetup)
 		{
-			SplitTS = PCAPTS;
+			s_RollPeriodSetup = true;
 
-			// if its split by time them boundary align it
-			SplitTS = PCAPTS / TargetTime;
-			SplitTS *= TargetTime;
+			// calcuclate pct within the roll the packet is
+			s64 PktRollModulo = PCAPTS %  s_RollPeriod;
+			float Pct = PktRollModulo / (float)s_RollPeriod;
+			printf("roll period setup:%.3fmin  Nano Modulo:%lli Pct%:%.3f FirstPkt:%s\n", s_RollPeriod/60e9, PktRollModulo, Pct, FormatTS(PCAPTS));
 
-			fprintf(stdout, "inital split %lli %lli\n", PCAPTS, SplitTS);
+			// calculat the next roll time. by adding 10% of the roll period (if pkts are slightly before roll time)
+			// to the packet time and rounding up
+			s_RollTS = (PCAPTS + 0.10 * s_RollPeriod) / s_RollPeriod;
+			s_RollTS += 1; 
+			s_RollTS *= s_RollPeriod; 
 		}
-*/
 
 		// split mode
 		bool NewSplit = false;
@@ -1059,7 +1062,7 @@ int main(int argc, char* argv[])
 					system(s_ScriptNewCmd);
 				}
 
-				GenerateFileName(FileNameMode, FileName, OutFileName, PCAPTS, SplitTS, false);
+				GenerateFileName(FileNameMode, FileName, OutFileName, PCAPTS, SplitTS);
 				sprintf(FileNamePending, "%s.pending", FileName);
 
 				u8 Cmd[4095];
@@ -1085,8 +1088,24 @@ int main(int argc, char* argv[])
 
 		case SPLIT_MODE_TIME:
 			{
+				bool IsNoSplit = false;
+
+				//if it has a roll position
+				if (s_RollTS != 0)
+				{
+					// position wrt to split time
+					float Pct = (s_RollTS - PCAPTS) / (float)s_RollPeriod;
+
+					// overflow into the next split
+					if (Pct <= 0.0)
+					{
+						//dont split let the packets bleed over
+						IsNoSplit = true;
+					}
+				}
+
 				s64 dTS = PCAPTS - SplitTS;
-				if (dTS > TargetTime)
+				if ((dTS > TargetTime) && (!IsNoSplit))
 				{
 					// is it the first split
 					bool IsFirstSplit = (SplitTS == 0);
@@ -1127,7 +1146,7 @@ int main(int argc, char* argv[])
 					u64 SplitTSStart 	= SplitTS;
 					u64 SplitTSStop		= SplitTS+TargetTime;
 
-					GenerateFileName(FileNameMode, FileName, OutFileName, SplitTSStart, SplitTSStop, IsFirstSplit);
+					GenerateFileName(FileNameMode, FileName, OutFileName, SplitTSStart, SplitTSStop);
 					sprintf(FileNamePending, "%s.pending", FileName);
 
 					// generate pipe
