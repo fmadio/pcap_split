@@ -72,6 +72,16 @@ example: split compress pcap every 100GB
 $ gzip -d -c my_big_capture.pcap.gz | pcap_split -o my_big_capture_ --split-byte 100e9
 
 ```
+
+
+###Midnight Roll
+
+Durning capture typically a source file will roll on an hourly or 24H our basis. Durning that time the capture software may not roll preceisely at 00:00:00.000.000.000 but has a few packets extra on either side of the roll time
+
+Added in the --roll-period <nanos> setting which will ignore creating new roll files at the start and end of the specified period. 
+
+
+
 ### Support 
 
 This tool is part of the FMADIO **10Gbe/40Gbe/100 Gbe packet capture device**, more information can be found at http://fmad.io 
