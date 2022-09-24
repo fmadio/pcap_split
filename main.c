@@ -868,6 +868,8 @@ int main(int argc, char* argv[])
 	u64 SplitTS					= 0;
 
 	u8* 			Pkt			= malloc(1024*1024);	
+	assert(Pkt);
+
 	PCAPPacket_t*	PktHeader	= (PCAPPacket_t*)Pkt;
 
 	u8 FileName[1024];			// filename of the final output
@@ -891,6 +893,7 @@ int main(int argc, char* argv[])
 		FMADChunkBufferPos	= 0;
 		FMADChunkBufferMax	= 0;
 		FMADChunkBuffer		= malloc(1024*1024);
+		assert(FMADChunkBuffer != NULL);
 		break;
 	}
 
