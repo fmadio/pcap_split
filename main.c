@@ -1121,8 +1121,10 @@ int main(int argc, char* argv[])
 					}
 				}
 
+				// if pcap time is over the split 
+				// or the pcap time has jumped back negative substanially
 				s64 dTS = PCAPTS - SplitTS;
-				if ((dTS > TargetTime) && (!IsNoSplit))
+				if (((dTS > TargetTime) || (dTS < -60e9))  && (!IsNoSplit))
 				{
 					// is it the first split
 					bool IsFirstSplit = (SplitTS == 0);
