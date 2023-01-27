@@ -323,7 +323,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, s_FileNameSuffix);
+			sprintf(FileName, "%s%04i%02i%02i_%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, s_FileNameSuffix);
 		}
 		break;
 
@@ -331,7 +331,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 		{
 			clock_date_t c	= ns2clock(TS);
 
-			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, s_FileNameSuffix); 
+			sprintf(FileName, "%s%04i%02i%02i_%02i%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, s_FileNameSuffix); 
 		}
 		break;
 
@@ -362,7 +362,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%04i-%02i-%02i_%02i:%02i:%02i%c%02i:%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, TZSign, TZHour, TZMin, s_FileNameSuffix); 
+			sprintf(FileName, "%s%04i-%02i-%02i_%02i:%02i:%02i%c%02i:%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, TZSign, TZHour, TZMin, s_FileNameSuffix); 
 		}
 		break;
 
@@ -374,7 +374,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			struct tm* t = localtime(&t0);
 			strftime(TimeStr, sizeof(TimeStr), s_strftimeFormat, t);
 
-			sprintf(FileName, "%s_%s%s", BaseName, TimeStr, s_FileNameSuffix); 
+			sprintf(FileName, "%s%s%s", BaseName, TimeStr, s_FileNameSuffix); 
 		}
 		break;
 
@@ -390,7 +390,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i.%03lli.%03lli.%03lli%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec, s_FileNameSuffix); 
+			sprintf(FileName, "%s%04i%02i%02i_%02i%02i%02i.%03lli.%03lli.%03lli%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec, s_FileNameSuffix); 
 		}
 		break;
 
@@ -406,7 +406,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%04i%02i%02i_%02i-%02i-%02i.%03lli%03lli%03lli%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec, s_FileNameSuffix); 
+			sprintf(FileName, "%s%04i%02i%02i_%02i-%02i-%02i.%03lli%03lli%03lli%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec, s_FileNameSuffix); 
 		}
 		break;
 
@@ -586,7 +586,7 @@ int main(int argc, char* argv[])
 			TargetTime = atof(argv[i+1]);
 			i++;
 
-			fprintf(stderr, "    Split Every %lli Sec\n", TargetTime / 1e9);
+			fprintf(stderr, "    Split Every %f Sec\n", TargetTime / 1e9);
 		}
 		else if (strcmp(argv[i], "--packet-chomp") == 0)
 		{
