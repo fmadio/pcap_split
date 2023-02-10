@@ -700,8 +700,48 @@ int main(int argc, char* argv[])
 			u8* UserName       = argv[i+1]; 
 
 			struct passwd *pwd 	= getpwnam(UserName);
-		    s_FileNameUID		= pwd->pw_uid;
-		    s_FileNameGID		= pwd->pw_gid;
+			if (pwd != NULL)
+			{
+		    	s_FileNameUID		= pwd->pw_uid;
+				s_FileNameGID		= pwd->pw_gid;
+			}
+			else
+			{
+				// search for UID:GID style
+				u8 sUID[128];
+				u8 sGID[128];
+
+				u32 UIDPos = 0;
+				u32 GIDPos = 0;
+
+				int i=0;
+				for (; i < strlen(UserName); i++)
+				{
+					u32 c = UserName[i];
+					if (c == ':')
+					{
+						sUID[UIDPos] = 0;
+						break;
+					}
+
+					sUID[UIDPos++] = c;
+				}
+
+				// skip :
+				i++;
+
+				for (; i < strlen(UserName); i++)
+				{
+					u32 c = UserName[i];
+					sGID[GIDPos++] = c;
+				}
+				sGID[GIDPos] = 0;
+
+				fprintf(stderr, "UID[%s] GID[%s]\n", sUID, sGID);
+
+		    	s_FileNameUID		= atoi(sUID); 
+				s_FileNameGID		= atoi(sGID); 
+			}
 
 			fprintf(stderr, "UserName (%s) %i:%i\n", UserName, s_FileNameUID, s_FileNameGID); 
 			i++;
