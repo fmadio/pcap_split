@@ -222,6 +222,7 @@ static void Help(void)
 	printf("--curl <args> <prefix>         : endpoint is curl via ftp\n");
 	printf("--null                         : null performance mode\n");
 	printf("-Z <username>                  : change ownership to username\n");
+	printf("-Z <UID:GID>                   : change ownership using UID GID\n");
 	printf("\n");
 	printf("\n");
 	printf("example: split every 100GB\n");
