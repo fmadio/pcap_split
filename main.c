@@ -323,7 +323,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, s_FileNameSuffix);
+			sprintf(FileName, "%s%04i%02i%02i_%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, s_FileNameSuffix);
 		}
 		break;
 
@@ -331,7 +331,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 		{
 			clock_date_t c	= ns2clock(TS);
 
-			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, s_FileNameSuffix); 
+			sprintf(FileName, "%s%04i%02i%02i_%02i%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, s_FileNameSuffix); 
 		}
 		break;
 
@@ -362,7 +362,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%04i-%02i-%02i_%02i:%02i:%02i%c%02i:%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, TZSign, TZHour, TZMin, s_FileNameSuffix); 
+			sprintf(FileName, "%s%04i-%02i-%02i_%02i:%02i:%02i%c%02i:%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, TZSign, TZHour, TZMin, s_FileNameSuffix); 
 		}
 		break;
 
@@ -374,7 +374,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			struct tm* t = localtime(&t0);
 			strftime(TimeStr, sizeof(TimeStr), s_strftimeFormat, t);
 
-			sprintf(FileName, "%s_%s%s", BaseName, TimeStr, s_FileNameSuffix); 
+			sprintf(FileName, "%s%s%s", BaseName, TimeStr, s_FileNameSuffix); 
 		}
 		break;
 
@@ -390,7 +390,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i.%03lli.%03lli.%03lli%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec, s_FileNameSuffix); 
+			sprintf(FileName, "%s%04i%02i%02i_%02i%02i%02i.%03lli.%03lli.%03lli%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec, s_FileNameSuffix); 
 		}
 		break;
 
@@ -406,7 +406,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%04i%02i%02i_%02i-%02i-%02i.%03lli%03lli%03lli%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec, s_FileNameSuffix); 
+			sprintf(FileName, "%s%04i%02i%02i_%02i-%02i-%02i.%03lli%03lli%03lli%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec, s_FileNameSuffix); 
 		}
 		break;
 
@@ -486,7 +486,8 @@ int main(int argc, char* argv[])
 	u32 SplitMode		= 0;
 	u32 FileNameMode	= FILENAME_TSTR_HHMMSS;
 
-	u32 CPUID			= 0;
+	u32 CPUList[128];
+	u32 CPUListCnt		= 0;
 
 	// default do nothing output
 	strcpy(s_PipeCmd, "cat");
@@ -529,11 +530,34 @@ int main(int argc, char* argv[])
 			fprintf(stderr, "    OutputName [%s]\n", OutFileName);
 			i++;
 		}
+
+		// parse a list of avaliable CPUs
 		else if (strcmp(argv[i], "--cpu") == 0)
 		{
-			CPUID = atoi(argv[i+1]);
+			u8* CPUStr   = argv[i+1];
+			u32 CPUStrLen = strlen(CPUStr);
+			u8* CPUStart = CPUStr; 
+			for (int i=0; i <= CPUStrLen; i++)
+			{
+				if ((CPUStr[i] == ',') || (CPUStr[i] == 0))
+				{
+					CPUStr[i] = 0;
+
+					u32 CPU = atoi(CPUStart);
+					CPUList[CPUListCnt++] = CPU;
+
+					fprintf(stderr, "CPU [%i]\n", CPU);
+					CPUStart = &CPUStr[i+1];
+				}
+			}
+
 			i++;
-			fprintf(stderr, "    CPU ID:%i\n", CPUID);
+			fprintf(stderr, "    CPUList Cnt:%i [", CPUListCnt);
+			for (int i=0; i < CPUListCnt; i++)
+			{
+				fprintf(stderr, "%i ", CPUList[i]);
+			}
+			fprintf(stderr, "]\n", CPUList[i]);
 		}
 		else if (strcmp(argv[i], "--ring") == 0)
 		{
@@ -562,7 +586,7 @@ int main(int argc, char* argv[])
 			TargetTime = atof(argv[i+1]);
 			i++;
 
-			fprintf(stderr, "    Split Every %lli Sec\n", TargetTime / 1e9);
+			fprintf(stderr, "    Split Every %f Sec\n", TargetTime / 1e9);
 		}
 		else if (strcmp(argv[i], "--packet-chomp") == 0)
 		{
@@ -754,11 +778,15 @@ int main(int argc, char* argv[])
 	}
 
 	// set cpu affinity
-	if (CPUID != -1)
+	if (CPUListCnt > 0)
 	{
 		cpu_set_t	MainCPUS;
 		CPU_ZERO(&MainCPUS);
-		CPU_SET(CPUID, &MainCPUS);
+
+		for (int i=0; i < CPUListCnt; i++)
+		{
+			CPU_SET(CPUList[i], &MainCPUS);
+		}
 		pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &MainCPUS);
 	}
 
