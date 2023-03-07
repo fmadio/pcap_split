@@ -1326,6 +1326,13 @@ int main(int argc, char* argv[])
 	{
 		fclose(OutFile);
 		RenameFile(OutputMode, FileNamePending, FileName, CurlCmd);
+
+		// rename the last file 
+		if (s_FileNameUID)
+		{
+			fprintf(stderr, "chown last file\n");
+			chown(FileName, s_FileNameUID, s_FileNameGID); 
+		}
 	}
 
 	printf("Complete\n");
