@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <linux/sched.h>
 #include <pwd.h>
+#include <grp.h>
 
 #include "fTypes.h"
 
@@ -222,6 +223,7 @@ static void Help(void)
 	printf("--curl <args> <prefix>         : endpoint is curl via ftp\n");
 	printf("--null                         : null performance mode\n");
 	printf("-Z <username>                  : change ownership to username\n");
+	printf("-Z <username.group>            : change ownership to username.group\n");
 	printf("-Z <UID:GID>                   : change ownership using UID GID\n");
 	printf("\n");
 	printf("\n");
@@ -743,7 +745,7 @@ int main(int argc, char* argv[])
 				for (; i < strlen(UserName); i++)
 				{
 					u32 c = UserName[i];
-					if (c == ':')
+					if ((c == ':') || (c == '.'))
 					{
 						sUID[UIDPos] = 0;
 						break;
@@ -766,6 +768,24 @@ int main(int argc, char* argv[])
 
 		    	s_FileNameUID		= atoi(sUID); 
 				s_FileNameGID		= atoi(sGID); 
+
+				// if its not a UID/GID number try it as a username/group string
+				if (s_FileNameUID == 0)
+				{
+					struct passwd *pwd 	= getpwnam(sUID);
+					if (pwd != NULL)
+					{
+		    			s_FileNameUID		= pwd->pw_uid;
+					}
+				}
+				if (s_FileNameGID == 0)
+				{
+					struct group *grp = getgrnam(sGID);
+					if (grp != NULL)
+					{
+		    			s_FileNameGID		= grp->gr_gid;
+					}
+				}
 			}
 
 			fprintf(stderr, "UserName (%s) %i:%i\n", UserName, s_FileNameUID, s_FileNameGID); 
