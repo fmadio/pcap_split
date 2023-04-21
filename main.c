@@ -862,6 +862,7 @@ int main(int argc, char* argv[])
 	u32 TotalSplit				= 0;
 
 	u64 SplitByte	 			= -1;	
+	u64 SplitPkt	 			= -1;	
 	FILE* OutFile 				= NULL;
 
 	u64 LastTS					= 0;
@@ -1096,6 +1097,7 @@ int main(int argc, char* argv[])
 				SplitTS		= PCAPTS;
 
 				SplitByte 	= 0;
+				SplitPkt 	= 0;
 				NewSplit 	= true;
 			}
 			break;
@@ -1136,6 +1138,13 @@ int main(int argc, char* argv[])
 					if (OutFile)
 					{
 						fclose(OutFile);
+
+						// log the number of packets and total size
+						double dT = (clock_ns() - StartTS) / 1e9;
+						u8 TimeStr[1024];
+						clock_date_t c	= ns2clock(PCAPTS);
+						sprintf(TimeStr, "%04i-%02i-%02i %02i:%02i:%02i", c.year, c.month, c.day, c.hour, c.min, c.sec);
+						printf("[%.3f H][%s] %s : Split Bytes %lli(%.3f GB) Split Pkts:%10lli \n", dT / (60*60), TimeStr, FileName, SplitByte, SplitByte / 1e9, SplitPkt);
 
 						// rename to file name 
 						RenameFile(OutputMode, FileNamePending, FileName, CurlCmd);
@@ -1178,6 +1187,7 @@ int main(int argc, char* argv[])
 					fwrite(&HeaderMaster, 1, sizeof(HeaderMaster), OutFile);	
 
 					SplitByte 	= 0;
+					SplitPkt 	= 0;
 					NewSplit 	= true;
 				}
 			}
@@ -1200,6 +1210,8 @@ int main(int argc, char* argv[])
 			}
 
 			SplitByte += sizeof(PCAPPacket_t) + PktHeader->LengthCapture;
+			SplitPkt  += 1; 
+
 			TotalByte += sizeof(PCAPPacket_t) + PktHeader->LengthCapture;
 			TotalPkt  += 1; 
 		}	
@@ -1208,6 +1220,7 @@ int main(int argc, char* argv[])
 
 		if (NewSplit)
 		{
+
 			TotalSplit++;
 
 			u8 TimeStr[1024];
