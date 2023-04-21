@@ -167,6 +167,9 @@ static u8		s_PipeCmd[4096] 	= { 0 };	// allow compression and other stuff
 static bool		s_ScriptNew				= false;	// run this script before every filefile 
 static u8		s_ScriptNewCmd[4096]	= { 0 };
 
+static bool		s_ScriptClose			= false;	// run this script when finishing a split 
+static u8		s_ScriptCloseCmd[4096]	= { 0 };
+
 // chomp every packet by x bytes. used for FCS / footer removal
 static u32		s_PacketChomp			= 0;		// chomp every packet by this bytes
 
@@ -722,6 +725,15 @@ int main(int argc, char* argv[])
 			fprintf(stderr, "    Script New Hook [%s]\n", s_ScriptNewCmd);
 			i++;
 		}
+		else if (strcmp(argv[i], "--script-close") == 0)
+		{
+			s_ScriptClose = true;
+			strncpy(s_ScriptCloseCmd, argv[i+1], sizeof(s_ScriptCloseCmd));	
+
+			fprintf(stderr, "    Script Close Hook [%s]\n", s_ScriptCloseCmd);
+			i++;
+		}
+
 		else if (strcmp(argv[i], "-Z") == 0)
 		{
 			u8* UserName       = argv[i+1]; 
@@ -952,6 +964,8 @@ int main(int argc, char* argv[])
 
 	u64 SplitByte	 			= -1;	
 	u64 SplitPkt	 			= -1;	
+	u64 SplitStartTS			= 0;
+	u64 SplitStartPCAPTS		= 0;
 	FILE* OutFile 				= NULL;
 
 	u64 LastTS					= 0;
@@ -1209,6 +1223,7 @@ int main(int argc, char* argv[])
 					{
 						//dont split let the packets bleed over
 						IsNoSplit = true;
+						printf("Disable splitter:%f : %lli %lli %lli\n", Pct, s_RollLocalTS,  (PCAPTS + s_TZOffset), s_RollPeriod);
 					}
 				}
 
@@ -1233,12 +1248,35 @@ int main(int argc, char* argv[])
 					{
 						fclose(OutFile);
 
+						u64 TS = clock_ns();
+
 						// log the number of packets and total size
-						double dT = (clock_ns() - StartTS) / 1e9;
+						double dT = (TS - StartTS) / 1e9;
 						u8 TimeStr[1024];
 						clock_date_t c	= ns2clock(PCAPTS);
 						sprintf(TimeStr, "%04i-%02i-%02i %02i:%02i:%02i", c.year, c.month, c.day, c.hour, c.min, c.sec);
-						printf("[%.3f H][%s] %s : Split Bytes %lli(%.3f GB) Split Pkts:%10lli \n", dT / (60*60), TimeStr, FileName, SplitByte, SplitByte / 1e9, SplitPkt);
+
+
+						s64 SplitDT 		= TS - SplitStartTS; 
+						s64 SplitPCAPDT 	= PCAPTS - SplitStartPCAPTS; 
+
+						printf("[%.3f H][%s] %s : Finished : Split Bytes %16lli (%.3f GB) Split Pkts:%10lli WallTime:%20lli PCAPTime:%20lli\n", dT / (60*60), TimeStr, FileName, SplitByte, SplitByte / 1e9, SplitPkt, SplitDT, SplitPCAPDT);
+
+						// run local script for every closed split
+						if (s_ScriptClose)
+						{
+							u8 Cmd[4096];	
+							sprintf(Cmd, "%s %s %lli %lli %lli %lli",  s_ScriptCloseCmd,
+																		FileName,
+																		SplitByte,
+																		SplitPkt,
+																		SplitDT,
+																		SplitPCAPDT
+								   );
+
+							printf("Script [%s]\n", Cmd);
+							system(Cmd);
+						}
 
 						// rename to file name 
 						RenameFile(OutputMode, FileNamePending, FileName, CurlCmd);
@@ -1246,7 +1284,7 @@ int main(int argc, char* argv[])
 						// change open
 						if (s_FileNameUID)
 						{
-							fprintf(stderr, "chown\n");
+							//fprintf(stderr, "chown\n");
 							chown(FileName, s_FileNameUID, s_FileNameGID); 
 						}
 					}
@@ -1314,8 +1352,10 @@ int main(int argc, char* argv[])
 
 		if (NewSplit)
 		{
-
 			TotalSplit++;
+
+			SplitStartTS		= clock_ns();
+			SplitStartPCAPTS	= PCAPTS; 
 
 			u8 TimeStr[1024];
 			clock_date_t c	= ns2clock(PCAPTS);
