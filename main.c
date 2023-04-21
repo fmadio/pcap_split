@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <linux/sched.h>
 #include <pwd.h>
+#include <grp.h>
 
 #include "fTypes.h"
 
@@ -222,6 +223,8 @@ static void Help(void)
 	printf("--curl <args> <prefix>         : endpoint is curl via ftp\n");
 	printf("--null                         : null performance mode\n");
 	printf("-Z <username>                  : change ownership to username\n");
+	printf("-Z <username.group>            : change ownership to username.group\n");
+	printf("-Z <UID:GID>                   : change ownership using UID GID\n");
 	printf("\n");
 	printf("\n");
 	printf("example: split every 100GB\n");
@@ -323,7 +326,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, s_FileNameSuffix);
+			sprintf(FileName, "%s%04i%02i%02i_%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, s_FileNameSuffix);
 		}
 		break;
 
@@ -331,7 +334,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 		{
 			clock_date_t c	= ns2clock(TS);
 
-			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, s_FileNameSuffix); 
+			sprintf(FileName, "%s%04i%02i%02i_%02i%02i%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, s_FileNameSuffix); 
 		}
 		break;
 
@@ -362,7 +365,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%04i-%02i-%02i_%02i:%02i:%02i%c%02i:%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, TZSign, TZHour, TZMin, s_FileNameSuffix); 
+			sprintf(FileName, "%s%04i-%02i-%02i_%02i:%02i:%02i%c%02i:%02i%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, TZSign, TZHour, TZMin, s_FileNameSuffix); 
 		}
 		break;
 
@@ -374,7 +377,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			struct tm* t = localtime(&t0);
 			strftime(TimeStr, sizeof(TimeStr), s_strftimeFormat, t);
 
-			sprintf(FileName, "%s_%s%s", BaseName, TimeStr, s_FileNameSuffix); 
+			sprintf(FileName, "%s%s%s", BaseName, TimeStr, s_FileNameSuffix); 
 		}
 		break;
 
@@ -390,7 +393,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%04i%02i%02i_%02i%02i%02i.%03lli.%03lli.%03lli%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec, s_FileNameSuffix); 
+			sprintf(FileName, "%s%04i%02i%02i_%02i%02i%02i.%03lli.%03lli.%03lli%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec, s_FileNameSuffix); 
 		}
 		break;
 
@@ -406,7 +409,7 @@ static void GenerateFileName(u32 Mode, u8* FileName, u8* BaseName, u64 TS, u64 T
 			u64 usec = (nsec / 1e3); 
 			nsec = nsec - usec * 1e3;
 
-			sprintf(FileName, "%s_%04i%02i%02i_%02i-%02i-%02i.%03lli%03lli%03lli%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec, s_FileNameSuffix); 
+			sprintf(FileName, "%s%04i%02i%02i_%02i-%02i-%02i.%03lli%03lli%03lli%s", BaseName, c.year, c.month, c.day, c.hour, c.min, c.sec, msec, usec, nsec, s_FileNameSuffix); 
 		}
 		break;
 
@@ -486,7 +489,8 @@ int main(int argc, char* argv[])
 	u32 SplitMode		= 0;
 	u32 FileNameMode	= FILENAME_TSTR_HHMMSS;
 
-	u32 CPUID			= 0;
+	u32 CPUList[128];
+	u32 CPUListCnt		= 0;
 
 	// default do nothing output
 	strcpy(s_PipeCmd, "cat");
@@ -529,11 +533,34 @@ int main(int argc, char* argv[])
 			fprintf(stderr, "    OutputName [%s]\n", OutFileName);
 			i++;
 		}
+
+		// parse a list of avaliable CPUs
 		else if (strcmp(argv[i], "--cpu") == 0)
 		{
-			CPUID = atoi(argv[i+1]);
+			u8* CPUStr   = argv[i+1];
+			u32 CPUStrLen = strlen(CPUStr);
+			u8* CPUStart = CPUStr; 
+			for (int i=0; i <= CPUStrLen; i++)
+			{
+				if ((CPUStr[i] == ',') || (CPUStr[i] == 0))
+				{
+					CPUStr[i] = 0;
+
+					u32 CPU = atoi(CPUStart);
+					CPUList[CPUListCnt++] = CPU;
+
+					fprintf(stderr, "CPU [%i]\n", CPU);
+					CPUStart = &CPUStr[i+1];
+				}
+			}
+
 			i++;
-			fprintf(stderr, "    CPU ID:%i\n", CPUID);
+			fprintf(stderr, "    CPUList Cnt:%i [", CPUListCnt);
+			for (int i=0; i < CPUListCnt; i++)
+			{
+				fprintf(stderr, "%i ", CPUList[i]);
+			}
+			fprintf(stderr, "]\n", CPUList[i]);
 		}
 		else if (strcmp(argv[i], "--ring") == 0)
 		{
@@ -562,7 +589,7 @@ int main(int argc, char* argv[])
 			TargetTime = atof(argv[i+1]);
 			i++;
 
-			fprintf(stderr, "    Split Every %lli Sec\n", TargetTime / 1e9);
+			fprintf(stderr, "    Split Every %f Sec\n", TargetTime / 1e9);
 		}
 		else if (strcmp(argv[i], "--packet-chomp") == 0)
 		{
@@ -700,8 +727,66 @@ int main(int argc, char* argv[])
 			u8* UserName       = argv[i+1]; 
 
 			struct passwd *pwd 	= getpwnam(UserName);
-		    s_FileNameUID		= pwd->pw_uid;
-		    s_FileNameGID		= pwd->pw_gid;
+			if (pwd != NULL)
+			{
+		    	s_FileNameUID		= pwd->pw_uid;
+				s_FileNameGID		= pwd->pw_gid;
+			}
+			else
+			{
+				// search for UID:GID style
+				u8 sUID[128];
+				u8 sGID[128];
+
+				u32 UIDPos = 0;
+				u32 GIDPos = 0;
+
+				int i=0;
+				for (; i < strlen(UserName); i++)
+				{
+					u32 c = UserName[i];
+					if ((c == ':') || (c == '.'))
+					{
+						sUID[UIDPos] = 0;
+						break;
+					}
+
+					sUID[UIDPos++] = c;
+				}
+
+				// skip :
+				i++;
+
+				for (; i < strlen(UserName); i++)
+				{
+					u32 c = UserName[i];
+					sGID[GIDPos++] = c;
+				}
+				sGID[GIDPos] = 0;
+
+				fprintf(stderr, "UID[%s] GID[%s]\n", sUID, sGID);
+
+		    	s_FileNameUID		= atoi(sUID); 
+				s_FileNameGID		= atoi(sGID); 
+
+				// if its not a UID/GID number try it as a username/group string
+				if (s_FileNameUID == 0)
+				{
+					struct passwd *pwd 	= getpwnam(sUID);
+					if (pwd != NULL)
+					{
+		    			s_FileNameUID		= pwd->pw_uid;
+					}
+				}
+				if (s_FileNameGID == 0)
+				{
+					struct group *grp = getgrnam(sGID);
+					if (grp != NULL)
+					{
+		    			s_FileNameGID		= grp->gr_gid;
+					}
+				}
+			}
 
 			fprintf(stderr, "UserName (%s) %i:%i\n", UserName, s_FileNameUID, s_FileNameGID); 
 			i++;
@@ -714,11 +799,15 @@ int main(int argc, char* argv[])
 	}
 
 	// set cpu affinity
-	if (CPUID != -1)
+	if (CPUListCnt > 0)
 	{
 		cpu_set_t	MainCPUS;
 		CPU_ZERO(&MainCPUS);
-		CPU_SET(CPUID, &MainCPUS);
+
+		for (int i=0; i < CPUListCnt; i++)
+		{
+			CPU_SET(CPUList[i], &MainCPUS);
+		}
 		pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &MainCPUS);
 	}
 
@@ -869,6 +958,8 @@ int main(int argc, char* argv[])
 	u64 SplitTS					= 0;
 
 	u8* 			Pkt			= malloc(1024*1024);	
+	assert(Pkt);
+
 	PCAPPacket_t*	PktHeader	= (PCAPPacket_t*)Pkt;
 
 	u8 FileName[1024];			// filename of the final output
@@ -892,6 +983,7 @@ int main(int argc, char* argv[])
 		FMADChunkBufferPos	= 0;
 		FMADChunkBufferMax	= 0;
 		FMADChunkBuffer		= malloc(1024*1024);
+		assert(FMADChunkBuffer != NULL);
 		break;
 	}
 
@@ -1120,8 +1212,10 @@ int main(int argc, char* argv[])
 					}
 				}
 
+				// if pcap time is over the split 
+				// or the pcap time has jumped back negative substanially
 				s64 dTS = PCAPTS - SplitTS;
-				if ((dTS > TargetTime) && (!IsNoSplit))
+				if (((dTS > TargetTime) || (dTS < -60e9))  && (!IsNoSplit))
 				{
 					// is it the first split
 					bool IsFirstSplit = (SplitTS == 0);
@@ -1265,6 +1359,13 @@ int main(int argc, char* argv[])
 	{
 		fclose(OutFile);
 		RenameFile(OutputMode, FileNamePending, FileName, CurlCmd);
+
+		// rename the last file 
+		if (s_FileNameUID)
+		{
+			fprintf(stderr, "chown last file\n");
+			chown(FileName, s_FileNameUID, s_FileNameGID); 
+		}
 	}
 
 	printf("Complete\n");
