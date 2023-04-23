@@ -486,11 +486,12 @@ int main(int argc, char* argv[])
 {
 	char* OutFileName 	= "";
 
-	u64 TargetByte 		= 0;
-	s64 TargetTime 		= 0;
+	u64 TargetByte 			= 0;
+	s64 TargetTime 			= 0;
+	s64 TargetTimeRoundup	= 0;
 
-	u32 SplitMode		= 0;
-	u32 FileNameMode	= FILENAME_TSTR_HHMMSS;
+	u32 SplitMode			= 0;
+	u32 FileNameMode		= FILENAME_TSTR_HHMMSS;
 
 	u32 CPUList[128];
 	u32 CPUListCnt		= 0;
@@ -593,6 +594,13 @@ int main(int argc, char* argv[])
 			i++;
 
 			fprintf(stderr, "    Split Every %f Sec\n", TargetTime / 1e9);
+		}
+		else if (strcmp(argv[i], "--split-time-roundup") == 0)
+		{
+			TargetTimeRoundup  = atof(argv[i+1]);
+			i++;
+
+			fprintf(stderr, "    Split Foundup %.6fsec\n", TargetTimeRoundup / 1e9);
 		}
 		else if (strcmp(argv[i], "--packet-chomp") == 0)
 		{
@@ -968,6 +976,14 @@ int main(int argc, char* argv[])
 	u64 SplitStartPCAPTS		= 0;
 	FILE* OutFile 				= NULL;
 
+
+	// no no targettime rounderup was specified use default 1/4
+	if (TargetTimeRoundup == 0)
+	{
+		TargetTimeRoundup		=  TargetTime/4; 
+	}
+
+
 	u64 LastTS					= 0;
 	u64 SplitTS					= 0;
 
@@ -1230,16 +1246,18 @@ int main(int argc, char* argv[])
 				// if pcap time is over the split 
 				// or the pcap time has jumped back negative substanially
 				s64 dTS = PCAPTS - SplitTS;
-				if (((dTS > TargetTime) || (dTS < -60e9))  && (!IsNoSplit))
+				if (((dTS > TargetTime) || (dTS < -TargetTime))  && (!IsNoSplit))
 				{
 					// is it the first split
 					bool IsFirstSplit = (SplitTS == 0);
 
-					// round up the first 1/4 of the time target
+					// round up the last 1/XXX (default 4) of the time target
+					// this can be overwriten with --split-time-roundup  
 					// as the capture processes does not split preceisely at 0.00000000000
 					// thus allow for some variance
-					SplitTS = ((PCAPTS + (TargetTime/4)) / TargetTime);
+					SplitTS = ((PCAPTS + TargetTimeRoundup) / TargetTime);
 					SplitTS *= TargetTime;
+
 
 					// create null PCAPs for anything missing 
 
