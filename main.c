@@ -1402,7 +1402,16 @@ int main(int argc, char* argv[])
 			double dPacket 	= TotalPkt  - LastPrintPkt; 
 			double Bps 		= (dByte * 8.0) / dT; 
 			double Pps 		= dPacket / dT; 
-			printf("[%.3f H][%s] %s : Total Bytes %20lli %10lli %.3f GB Speed: %.3f Gbps %.3f Mpps : TotalSplit %i\n", dT / (60*60), TimeStr, FileName, TotalByte, TotalPkt, TotalByte / 1e9, Bps / 1e9, Pps / 1e6, TotalSplit);
+			printf("[%.3f H][%s] %s : Total Bytes %20lli %10lli %.3f GB Speed: %.3f Gbps %.3f Mpps : TotalSplit %i PCAPTS: %lli\n", dT / (60*60), 
+																																	TimeStr, 
+																																	FileName, 
+																																	TotalByte, 
+																																	TotalPkt, 
+																																	TotalByte / 1e9, 
+																																	Bps / 1e9, 
+																																	Pps / 1e6, 
+																																	TotalSplit,
+																																	PCAPTS);
 			fflush(stdout);
 			fflush(stderr);
 
