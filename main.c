@@ -57,6 +57,7 @@
 #define OUTPUT_MODE_CAT					1					// cat > blah.pcap
 #define OUTPUT_MODE_RCLONE				2					// rclone rcat 
 #define OUTPUT_MODE_CURL				3					// curl 
+#define OUTPUT_MODE_SSH					4					// pipe to ssh 
 
 volatile bool g_SignalExit			= 0;					// signal handlered requesting exit		
 	
@@ -161,6 +162,13 @@ static u8		s_CURLArg[4096] 	= { 0 };	// curl cmd line args for curl
 static u8		s_CURLPath[4096] 	= { 0 };	// curl uri path 
 static u8		s_CURLPrefix[4096] 	= { 0 };	// curl filename prefix 
 
+static u8		s_SSHArg[4096] 		= { 0 };	// ssh cmd line args for curl	
+static u8		s_SSHOpt[4096] 		= { 0 };	// ssh command options 
+static u8		s_SSHHost[4096] 	= { 0 };	// ssh hostname 
+static u8		s_SSHPath[4096] 	= { 0 };	// ssh target path 
+static u8		s_SSHPrefix[4096] 	= { 0 };	// ssh filename prefix 
+
+
 static u8		s_PipeCmd[4096] 	= { 0 };	// allow compression and other stuff
 
 // hooks to run local scripts
@@ -220,7 +228,8 @@ static void Help(void)
 	printf("\n");
 	printf("--pipe-cmd                     : introduce a pipe command before final output\n");
 	printf("--rclone                       : endpoint is an rclone endpoint\n");
-	printf("--curl <args> <prefix>         : endpoint is curl via ftp\n");
+	printf("--curl <args> <prefix>         : endpoint is curl\n");
+	printf("--ssh  <args> <prefix>         : endpoint is ssh\n");
 	printf("--null                         : null performance mode\n");
 	printf("-Z <username>                  : change ownership to username\n");
 	printf("-Z <username.group>            : change ownership to username.group\n");
@@ -441,6 +450,11 @@ static void GeneratePipeCmd(u8* Cmd, u32 Mode, u8* FileName)
 	case OUTPUT_MODE_CURL:
 		sprintf(Cmd, "%s | curl -s -T - %s \"%s%s%s\"", s_PipeCmd, s_CURLArg, s_CURLPath, s_CURLPrefix, FileName);
 		break;
+
+	case OUTPUT_MODE_SSH:
+		sprintf(Cmd, "%s | ssh %s %s \" cat > %s%s%s\"", s_PipeCmd, s_SSHOpt, s_SSHHost, s_SSHPath, s_SSHPrefix, FileName);
+		break;
+
 	}
 }
 
@@ -474,6 +488,16 @@ static void RenameFile(u32 Mode, u8* FileNamePending, u8* FileName, u8* CurlCmd)
 			system(Cmd);
 		}
 		break;
+
+	case OUTPUT_MODE_SSH:
+		{
+			u8 Cmd[4096];
+			sprintf(Cmd, "ssh %s %s \"mv %s%s%s %s%s%s\" > /dev/null", s_SSHOpt, s_SSHHost, s_SSHPath, s_SSHPrefix, FileNamePending, s_SSHPath, s_SSHPrefix, FileName);
+			printf("Cmd [%s]\n", Cmd);
+			system(Cmd);
+		}
+		break;
+
 	}
 }
 
@@ -706,8 +730,88 @@ int main(int argc, char* argv[])
 			}
 
 			OutputMode = OUTPUT_MODE_CURL;
-			fprintf(stderr, "    Output Mode CRUL (%s) (%s) (%s)\n", s_CURLArg, s_CURLPath, s_CURLPrefix);
+			fprintf(stderr, "    Output Mode CURL (%s) (%s) (%s)\n", s_CURLArg, s_CURLPath, s_CURLPrefix);
 			i += 2;
+		}
+		else if (strcmp(argv[i], "--ssh") == 0)
+		{
+			strncpy(s_SSHArg , 	argv[i+1], sizeof(s_SSHArg)	);	
+
+			// seperate the path from the filename prefix 
+			u32 PrefixStart = 0;
+			for (int i=strlen(s_SSHArg)-1; i >= 0; i--)
+			{
+				if (s_SSHArg[i] == '/')
+				{
+					PrefixStart = i;
+					//printf("copy %i %i %s\n", i, strlen(s_SSHArg), s_SSHArg ); 
+
+					int Pos = 0;
+					for (int j=i+1; j < strlen(s_SSHArg); j++)
+					{
+						s_SSHPrefix[Pos++] = s_SSHArg[j];	
+					}
+					s_SSHPrefix[Pos++] = 0;
+
+					// drop the filename prefix
+					s_SSHPath[i+1] = 0;
+					break;
+				}
+			}
+
+			// seperate hostname from path 
+			u32 PathStart = 0;
+			for (int i=strlen(s_SSHArg)-1; i >= 0; i--)
+			{
+				if (s_SSHArg[i] == ':')
+				{
+					PathStart = i;
+					//printf("copy %i %i %s\n", i, strlen(s_SSHArg), s_SSHArg ); 
+
+					int Pos = 0;
+					for (int j=i+1; j <= PrefixStart; j++)
+					{
+						s_SSHPath[Pos++] = s_SSHArg[j];	
+					}
+					s_SSHPath[Pos++] = 0;
+
+					// drop the filename prefix
+					s_SSHPath[i+1] = 0;
+					break;
+				}
+			}
+
+			// find host
+			u32 HostStart = 0;
+			for (int i=PathStart; i >= 0; i--)
+			{
+				if ((s_SSHArg[i] == ' ') || (i ==0) )
+				{
+					HostStart = i;
+					u32 Pos = 0;
+					for (int j=i; j < PathStart; j++)
+					{
+						s_SSHHost[Pos++] = s_SSHArg[j];
+					}
+					s_SSHHost[Pos++] = 0; 
+
+					break;
+				}
+			}
+
+			u32 Pos = 0;
+			for (int i=0; i < HostStart; i++)
+			{
+				s_SSHOpt[Pos++] = s_SSHArg[i];
+			}
+			s_SSHOpt[Pos++] = 0; 
+
+			OutputMode = OUTPUT_MODE_SSH;
+			fprintf(stderr, "    Output Mode SSH Opt    (%s)\n", s_SSHOpt);
+			fprintf(stderr, "                    Host   (%s)\n", s_SSHHost);
+			fprintf(stderr, "                    Path   (%s)\n", s_SSHPath);
+			fprintf(stderr, "                    Prefix (%s)\n", s_SSHPrefix);
+			i += 1;
 		}
 		else if (strcmp(argv[i], "--null") == 0)
 		{
