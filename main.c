@@ -463,7 +463,7 @@ static void GeneratePipeCmd(u8* Cmd, u32 Mode, u8* FileName)
 
 //-------------------------------------------------------------------------------------------------
 // rename file 
-static void RenameFile(u32 Mode, u8* FileNamePending, u8* FileName, u8* CurlCmd)
+static void RenameFile(u32 Mode, u8* FileNamePending, u8* FileName)
 {
 	switch (Mode)
 	{
@@ -494,13 +494,12 @@ static void RenameFile(u32 Mode, u8* FileNamePending, u8* FileName, u8* CurlCmd)
 
 	case OUTPUT_MODE_SSH:
 		{
-			u8 Cmd[4096];
-			sprintf(Cmd, "ssh %s %s \"mv %s%s%s %s%s%s\" > /dev/null", s_SSHOpt, s_SSHHost, s_SSHPath, s_SSHPrefix, FileNamePending, s_SSHPath, s_SSHPrefix, FileName);
-			printf("Cmd [%s]\n", Cmd);
+			u8 Cmd[4*1024];
+			sprintf(Cmd, "echo \"mv %s%s%s %s%s%s\" | /usr/local/bin/ssh -T %s %s", s_SSHPath, s_SSHPrefix, FileNamePending, s_SSHPath, s_SSHPrefix, FileName, s_SSHOpt, s_SSHHost);
+			printf("Cmd [%s] %i\n", Cmd, strlen(Cmd) );
 			system(Cmd);
 		}
 		break;
-
 	}
 }
 
@@ -522,10 +521,6 @@ int main(int argc, char* argv[])
 
 	// default do nothing output
 	strcpy(s_PipeCmd, "cat");
-
-	// args sent to curl, e.g target IP password etc 
-	u8 CurlCmd[4096];		
-	strcpy(CurlCmd, "");
 
 
 	// default .pcap raw
@@ -763,6 +758,7 @@ int main(int argc, char* argv[])
 						s_SSHPrefix[Pos++] = s_SSHArg[j];	
 					}
 					s_SSHPrefix[Pos++] = 0;
+					assert(Pos < sizeof(s_SSHPrefix));
 
 					// drop the filename prefix
 					s_SSHPath[i+1] = 0;
@@ -785,6 +781,7 @@ int main(int argc, char* argv[])
 						s_SSHPath[Pos++] = s_SSHArg[j];	
 					}
 					s_SSHPath[Pos++] = 0;
+					assert(Pos < sizeof(s_SSHPath));
 
 					// drop the filename prefix
 					s_SSHPath[i+1] = 0;
@@ -805,6 +802,7 @@ int main(int argc, char* argv[])
 						s_SSHHost[Pos++] = s_SSHArg[j];
 					}
 					s_SSHHost[Pos++] = 0; 
+					assert(Pos < sizeof(s_SSHHost));
 
 					break;
 				}
@@ -816,6 +814,7 @@ int main(int argc, char* argv[])
 				s_SSHOpt[Pos++] = s_SSHArg[i];
 			}
 			s_SSHOpt[Pos++] = 0; 
+			assert(Pos < sizeof(s_SSHOpt));
 
 			OutputMode = OUTPUT_MODE_SSH;
 			fprintf(stderr, "    Output Mode SSH Opt    (%s)\n", s_SSHOpt);
@@ -1293,7 +1292,7 @@ int main(int argc, char* argv[])
 					fclose(OutFile);
 
 					// rename to file name 
-					RenameFile(OutputMode, FileNamePending, FileName, CurlCmd);
+					RenameFile(OutputMode, FileNamePending, FileName);
 				}
 
 				// run local new script 
@@ -1306,7 +1305,7 @@ int main(int argc, char* argv[])
 				GenerateFileName(FileNameMode, FileName, OutFileName, PCAPTS, SplitTS);
 				sprintf(FileNamePending, "%s.pending", FileName);
 
-				u8 Cmd[4095];
+				u8 Cmd[16*1024];
 				GeneratePipeCmd(Cmd, OutputMode, FileNamePending);
 
 				printf("[%s]\n", Cmd);
@@ -1401,7 +1400,7 @@ int main(int argc, char* argv[])
 						}
 
 						// rename to file name 
-						RenameFile(OutputMode, FileNamePending, FileName, CurlCmd);
+						RenameFile(OutputMode, FileNamePending, FileName);
 
 						// change open
 						if (s_FileNameUID)
@@ -1529,7 +1528,7 @@ int main(int argc, char* argv[])
 	if (OutFile)
 	{
 		fclose(OutFile);
-		RenameFile(OutputMode, FileNamePending, FileName, CurlCmd);
+		RenameFile(OutputMode, FileNamePending, FileName);
 
 		// rename the last file 
 		if (s_FileNameUID)
