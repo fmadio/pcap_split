@@ -1087,7 +1087,7 @@ int main(int argc, char* argv[])
 	}
 
 
-	u64 LastTS					= 0;
+	u64 LastPCAPTS				= 0;
 	u64 SplitTS					= 0;
 
 	u8* 			Pkt			= malloc(1024*1024);	
@@ -1146,7 +1146,7 @@ int main(int argc, char* argv[])
 			// validate size
 			if ((PktHeader->LengthCapture == 0) || (PktHeader->LengthCapture > 128*1024)) 
 			{
-				printf("Invalid packet length: %i : %s\n", PktHeader->LengthCapture, FormatTS(LastTS) );
+				printf("Invalid packet length: %i : %s\n", PktHeader->LengthCapture, FormatTS(LastPCAPTS) );
 				IsExit = true;
 				break;
 			}
@@ -1291,6 +1291,38 @@ int main(int argc, char* argv[])
 				{
 					fclose(OutFile);
 
+					u64 TS = clock_ns();
+
+					// log the split 
+					double dT = (TS - StartTS) / 1e9;
+					u8 TimeStr[1024];
+					clock_date_t c	= ns2clock(PCAPTS);
+					sprintf(TimeStr, "%04i-%02i-%02i %02i:%02i:%02i", c.year, c.month, c.day, c.hour, c.min, c.sec);
+
+					s64 SplitDT 		= TS - SplitStartTS; 
+					s64 SplitPCAPDT 	= PCAPTS - SplitStartPCAPTS; 
+
+					printf("[%.3f H][%s] %s : Finished : Split Bytes %16lli (%.3f GB) Split Pkts:%10lli WallTime:%20lli PCAPTime:%20lli\n", dT / (60*60), TimeStr, FileName, SplitByte, SplitByte / 1e9, SplitPkt, SplitDT, SplitPCAPDT);
+
+					// run local script for every closed split
+					if (s_ScriptClose)
+					{
+						// log the number of packets and total size
+						u8 Cmd[4096];	
+						sprintf(Cmd, "%s %s %lli %lli %lli %lli %lli %lli",  s_ScriptCloseCmd,
+																			FileName,
+																			SplitByte,
+																			SplitPkt,
+																			SplitDT,
+																			SplitPCAPDT,
+																			SplitTS,
+																			LastPCAPTS
+						);
+
+						printf("Script [%s]\n", Cmd);
+						system(Cmd);
+					}
+
 					// rename to file name 
 					RenameFile(OutputMode, FileNamePending, FileName);
 				}
@@ -1387,13 +1419,15 @@ int main(int argc, char* argv[])
 						if (s_ScriptClose)
 						{
 							u8 Cmd[4096];	
-							sprintf(Cmd, "%s %s %lli %lli %lli %lli",  s_ScriptCloseCmd,
-																		FileName,
-																		SplitByte,
-																		SplitPkt,
-																		SplitDT,
-																		SplitPCAPDT
-								   );
+							sprintf(Cmd, "%s %s %lli %lli %lli %lli %lli %lli",	s_ScriptCloseCmd,
+																				FileName,
+																				SplitByte,
+																				SplitPkt,
+																				SplitDT,
+																				SplitPCAPDT,
+																				SplitTS,
+																				LastPCAPTS
+							);
 
 							printf("Script [%s]\n", Cmd);
 							system(Cmd);
@@ -1469,7 +1503,7 @@ int main(int argc, char* argv[])
 			TotalPkt  += 1; 
 		}	
 		// use the NOP packets to update the timestamp
-		LastTS = PCAPTS;
+		LastPCAPTS = PCAPTS;
 
 		if (NewSplit)
 		{
@@ -1495,7 +1529,7 @@ int main(int argc, char* argv[])
 			LastTSC = rdtsc();
 
 			u8 TimeStr[1024];
-			clock_date_t c	= ns2clock(LastTS);
+			clock_date_t c	= ns2clock(LastPCAPTS);
 			sprintf(TimeStr, "%04i-%02i-%02i %02i:%02i:%02i", c.year, c.month, c.day, c.hour, c.min, c.sec);
 
 			u64 TS = clock_ns();
