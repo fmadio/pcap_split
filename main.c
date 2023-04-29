@@ -462,6 +462,35 @@ static void GeneratePipeCmd(u8* Cmd, u32 Mode, u8* FileName)
 }
 
 //-------------------------------------------------------------------------------------------------
+// generate a filename for description purposes 
+static void GenerateDescription(u8* Cmd, u32 Mode, u8* FileName)
+{
+	switch (Mode)
+	{
+	case OUTPUT_MODE_NULL:
+		sprintf(Cmd, "NULL:");
+		break;
+
+	case OUTPUT_MODE_CAT:
+		sprintf(Cmd, "FILE:%s", FileName);
+		break;
+
+	case OUTPUT_MODE_RCLONE:
+		sprintf(Cmd, "RCLONE:%s", s_PipeCmd, FileName);
+		break;
+
+	case OUTPUT_MODE_CURL:
+		sprintf(Cmd, "CURL:%s%s%s", s_CURLPath, s_CURLPrefix, FileName);
+		break;
+
+	case OUTPUT_MODE_SSH:
+		sprintf(Cmd, "SSH:%s:%s%s%s", s_SSHHost, s_SSHPath, s_SSHPrefix, FileName);
+		break;
+	}
+}
+
+
+//-------------------------------------------------------------------------------------------------
 // rename file 
 static void RenameFile(u32 Mode, u8* FileNamePending, u8* FileName)
 {
@@ -1307,16 +1336,20 @@ int main(int argc, char* argv[])
 					// run local script for every closed split
 					if (s_ScriptClose)
 					{
+						// filename description
+						u8 Desc[4096];
+						GenerateDescription(Desc, OutputMode, FileName);
+
 						// log the number of packets and total size
 						u8 Cmd[4096];	
-						sprintf(Cmd, "%s %s %lli %lli %lli %lli %lli %lli",  s_ScriptCloseCmd,
-																			FileName,
-																			SplitByte,
-																			SplitPkt,
-																			SplitDT,
-																			SplitPCAPDT,
-																			SplitTS,
-																			LastPCAPTS
+						sprintf(Cmd, "%s \"%s\" %lli %lli %lli %lli %lli %lli",  	s_ScriptCloseCmd,
+																					Desc,
+																					SplitByte,
+																					SplitPkt,
+																					SplitDT,
+																					SplitPCAPDT,
+																					SplitTS,
+																					LastPCAPTS
 						);
 
 						printf("Script [%s]\n", Cmd);
