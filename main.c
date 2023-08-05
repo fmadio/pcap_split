@@ -1628,14 +1628,19 @@ int main(int argc, char* argv[])
 			sprintf(Cmd, "%s %s %lli %lli %lli %lli %lli %lli %lli %lli",
 																s_ScriptCloseCmd,
 																FileName,
+
 																SplitByte,
 																SplitPkt,
+
 																SplitDT,
 																SplitPCAPDT,
-																SplitTS,
+
 																LastSplitTS,
+																SplitTS,
+
 																SplitStartPCAPTS,
 																LastPCAPTS,
+
 																LastPCAPTS
 			);
 
