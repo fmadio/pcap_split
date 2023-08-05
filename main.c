@@ -1117,7 +1117,8 @@ int main(int argc, char* argv[])
 
 
 	u64 LastPCAPTS				= 0;
-	u64 SplitTS					= 0;
+	u64 SplitTS					= 0;				// next boudnary condition
+	u64 LastSplitTS				= 0;				// last boundary condition 
 
 	u8* 			Pkt			= malloc(1024*1024);	
 	assert(Pkt);
@@ -1419,13 +1420,15 @@ int main(int argc, char* argv[])
 					// is it the first split
 					bool IsFirstSplit = (SplitTS == 0);
 
+					// save previous boundary
+					LastSplitTS = SplitTS;
+
 					// round up the last 1/XXX (default 4) of the time target
 					// this can be overwriten with --split-time-roundup  
 					// as the capture processes does not split preceisely at 0.00000000000
 					// thus allow for some variance
 					SplitTS = ((PCAPTS + TargetTimeRoundup) / TargetTime);
 					SplitTS *= TargetTime;
-
 
 					// create null PCAPs for anything missing 
 
@@ -1452,14 +1455,18 @@ int main(int argc, char* argv[])
 						if (s_ScriptClose)
 						{
 							u8 Cmd[4096];	
-							sprintf(Cmd, "%s %s %lli %lli %lli %lli %lli %lli",	s_ScriptCloseCmd,
+							sprintf(Cmd, "%s %s %lli %lli %lli %lli %lli %lli %lli %lli",
+																				s_ScriptCloseCmd,
 																				FileName,
 																				SplitByte,
 																				SplitPkt,
 																				SplitDT,
 																				SplitPCAPDT,
 																				SplitTS,
-																				LastPCAPTS
+																				LastSplitTS,
+																				SplitStartPCAPTS,
+																				LastPCAPTS,
+																				PCAPTS
 							);
 
 							printf("Script [%s]\n", Cmd);
