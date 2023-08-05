@@ -1602,6 +1602,42 @@ int main(int argc, char* argv[])
 	if (OutFile)
 	{
 		fclose(OutFile);
+
+		u64 TS = clock_ns();
+
+		// log the number of packets and total size
+		double dT = (TS - StartTS) / 1e9;
+		u8 TimeStr[1024];
+		clock_date_t c	= ns2clock(LastPCAPTS);
+		sprintf(TimeStr, "%04i-%02i-%02i %02i:%02i:%02i", c.year, c.month, c.day, c.hour, c.min, c.sec);
+
+		s64 SplitDT 		= TS - SplitStartTS; 
+		s64 SplitPCAPDT 	= LastPCAPTS - SplitStartPCAPTS; 
+
+		printf("[%.3f H][%s] %s : Finished : Split Bytes %16lli (%.3f GB) Split Pkts:%10lli WallTime:%20lli PCAPTime:%20lli close\n", dT / (60*60), TimeStr, FileName, SplitByte, SplitByte / 1e9, SplitPkt, SplitDT, SplitPCAPDT);
+
+		// run local script for every closed split
+		if (s_ScriptClose)
+		{
+			u8 Cmd[4096];	
+			sprintf(Cmd, "%s %s %lli %lli %lli %lli %lli %lli %lli %lli",
+																s_ScriptCloseCmd,
+																FileName,
+																SplitByte,
+																SplitPkt,
+																SplitDT,
+																SplitPCAPDT,
+																SplitTS,
+																LastSplitTS,
+																SplitStartPCAPTS,
+																LastPCAPTS,
+																LastPCAPTS
+			);
+
+			printf("Script [%s]\n", Cmd);
+			system(Cmd);
+		}
+
 		RenameFile(OutputMode, FileNamePending, FileName);
 
 		// rename the last file 
