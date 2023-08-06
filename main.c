@@ -1455,7 +1455,7 @@ int main(int argc, char* argv[])
 						if (s_ScriptClose)
 						{
 							u8 Cmd[4096];	
-							sprintf(Cmd, "%s %s %lli %lli %lli %lli %lli %lli %lli %lli",
+							sprintf(Cmd, "%s %s %lli %lli %lli %lli %lli %lli %lli %lli %lli",
 																				s_ScriptCloseCmd,
 																				FileName,
 
@@ -1625,7 +1625,7 @@ int main(int argc, char* argv[])
 		if (s_ScriptClose)
 		{
 			u8 Cmd[4096];	
-			sprintf(Cmd, "%s %s %lli %lli %lli %lli %lli %lli %lli %lli",
+			sprintf(Cmd, "%s %s %lli %lli %lli %lli %lli %lli %lli %lli %lli",
 																s_ScriptCloseCmd,
 																FileName,
 
