@@ -1406,7 +1406,7 @@ int main(int argc, char* argv[])
 					// overflow into the next split
 					if (Pct <= 0.0)
 					{
-						static u64 DisabalePktCnt = 0;
+						static u64 DisablePktCnt = 0;
 
 						//dont split let the packets bleed over
 						IsNoSplit = true;
