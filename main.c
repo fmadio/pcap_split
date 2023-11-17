@@ -1406,9 +1406,17 @@ int main(int argc, char* argv[])
 					// overflow into the next split
 					if (Pct <= 0.0)
 					{
+						static u64 DisabalePktCnt = 0;
+
 						//dont split let the packets bleed over
 						IsNoSplit = true;
-						printf("Disable splitter:%f : %lli %lli %lli\n", Pct, s_RollLocalTS,  (PCAPTS + s_TZOffset), s_RollPeriod);
+
+						// log only the first 10K disables 
+						DisablePktCnt++;
+						if (DisablePktCnt < 10000)
+						{
+							printf("Disable splitter:%f : %lli %lli %lli\n", Pct, s_RollLocalTS,  (PCAPTS + s_TZOffset), s_RollPeriod, DisablePktCnt);
+						}
 					}
 				}
 
